@@ -1,0 +1,18 @@
+Pulsar is an open-source (GPLv3) emulator for portable and classic PlayStation-family systems,
+with a built-in store of games that are legally free to distribute.
+
+FEATURES
+- Emulates PSP, PS1 and PS2 via well-established open-source cores.
+- A curated store of homebrew, public-domain, freeware and permissively-licensed indie games —
+  browse cover art, tap, download and play.
+- Import your own games and console BIOS from your device (Storage Access Framework).
+- Touch controls + Bluetooth gamepad support, save states and cloud save sync.
+- Clean, fast, dark UI.
+
+LEGAL
+Pulsar does not host, bundle, or distribute copyrighted commercial games or console BIOS files.
+Commercial titles and BIOS are supplied by you, from your own legally-obtained copies. The app is
+open-source; complete corresponding source ships with every release.
+
+Emulators are legal. Distributing copyrighted ROMs is not — so Pulsar's store contains only content
+we have the right to distribute, and everything else is yours to import.

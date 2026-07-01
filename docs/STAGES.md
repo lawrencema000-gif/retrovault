@@ -1,6 +1,6 @@
 # RetroVault / Pulsar — Stage Tracker
 
-> **Foundation-first build in progress (per user): laying every stage's structure, then one polish+integration pass. Stages 4-8 foundation laid → building Stages 9-10.**
+> **✅ All 10 stages' foundations laid and building green. → Ready for the final integration + polish pass (NDK + real cores + on-device review + external accounts).**
 
 This is the single source of truth for what stage the app is at. Every working session shows
 which stage we're on and updates this file.
@@ -18,8 +18,8 @@ Legend: done ✅ · foundation laid 🧱 (structure/UI done; functional bits in 
 | 6 | **Accounts + cloud saves** — GoTrue auth client + `:data-saves` (store + sync) + Save-States/Controller screens | 🧱 | client + UI done; sign-in UI + real sync = final pass |
 | 7 | **PS1 core** — SwanStation mapping + user BIOS import | 🧱 | core mapping + BIOS import/status; core `.so` + device = final pass |
 | 8 | **PS2 core** — ARMSX2 mapping, device-capability gate | 🧱 | mapping + RAM/OS gate + BIOS; core `.so` + device = final pass |
-| 9 | **Monetization** — AdMob free tier + "Pulsar Gold" IAP | ⬜ | |
-| 10 | **Distribution** — Google Play + F-Droid + direct APK, dev verification | 🔒 | needs Play/dev accounts |
+| 9 | **Monetization** — AdMob free tier + "Pulsar Gold" IAP | 🧱 | `:data-billing` (Gold entitlement + facade) + Settings Gold row; AdMob/Play Billing SDKs = final pass |
+| 10 | **Distribution** — Google Play + F-Droid + direct APK, dev verification | 🧱 | DISTRIBUTION.md + PRIVACY.md + fastlane metadata; build variants + signing = final pass (needs Play/dev accounts) |
 
 ## Stage 3 breakdown (current)
 

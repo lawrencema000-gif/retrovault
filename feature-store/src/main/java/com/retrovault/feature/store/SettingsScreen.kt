@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.VideogameAsset
 import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
@@ -56,6 +57,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.retrovault.core.model.GameSystem
 import com.retrovault.download.BiosStatus
 import com.retrovault.download.RomImporter
+import com.retrovault.billing.LocalBillingManager
 import com.retrovault.core.ui.theme.ChakraPetch
 import com.retrovault.core.ui.theme.PulsarAccentBrush
 import com.retrovault.core.ui.theme.PulsarBlueBrush
@@ -92,6 +94,10 @@ fun SettingsScreen() {
     val ps1BiosInstalled = remember(biosTick) { BiosStatus.isInstalled(context, GameSystem.PS1) }
     val ps2BiosInstalled = remember(biosTick) { BiosStatus.isInstalled(context, GameSystem.PS2) }
 
+    val billing = remember { LocalBillingManager(context) }
+    var goldTick by remember { mutableIntStateOf(0) }
+    val isGold = remember(goldTick) { billing.isGold }
+
     Column(
         Modifier
             .fillMaxSize()
@@ -100,6 +106,10 @@ fun SettingsScreen() {
             .padding(horizontal = 22.dp)
     ) {
         Text("Settings", fontFamily = ChakraPetch, fontWeight = FontWeight.Bold, fontSize = 26.sp, color = PulsarText)
+
+        Section("PULSAR GOLD") {
+            GoldRow(isGold) { if (!isGold) { billing.purchaseGold(); goldTick++ } }
+        }
 
         Section("VIDEO") {
             ResolutionRow(res) { res = it }
@@ -218,6 +228,28 @@ private fun StatusRow(icon: ImageVector, tint: Color, label: String, value: Stri
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             if (showCheck) Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = PulsarTeal, modifier = Modifier.size(16.dp))
             Text(value, fontSize = 12.sp, color = valueColor, fontFamily = ChakraPetch)
+        }
+    }
+}
+
+@Composable
+private fun GoldRow(isGold: Boolean, onUpgrade: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onUpgrade)
+            .padding(horizontal = 16.dp, vertical = 15.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        RowIcon(Icons.Filled.WorkspacePremium, PulsarYellow, if (isGold) "Gold active" else "Upgrade to Pulsar Gold")
+        if (isGold) {
+            Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = PulsarTeal, modifier = Modifier.size(16.dp))
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Unlock", fontSize = 12.sp, color = PulsarTextFaint, fontFamily = ChakraPetch)
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = PulsarTextDim, modifier = Modifier.size(18.dp))
+            }
         }
     }
 }

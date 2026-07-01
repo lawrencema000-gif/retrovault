@@ -35,13 +35,17 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.retrovault.app.data.remote.SupabaseCatalogRepository
 import com.retrovault.app.data.repository.CatalogRepository
 import com.retrovault.app.util.formatBytes
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GameDetailScreen(gameId: String, onBack: () -> Unit) {
-    val game = remember(gameId) { CatalogRepository.byId(gameId) }
+    // Resolve from the catalog fetched on the store screen; fall back to the bundled sample list.
+    val game = remember(gameId) {
+        SupabaseCatalogRepository.cachedById(gameId) ?: CatalogRepository.byId(gameId)
+    }
 
     Scaffold(
         topBar = {

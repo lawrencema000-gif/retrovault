@@ -45,6 +45,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -61,7 +62,10 @@ import com.retrovault.core.ui.theme.PulsarTeal
 import com.retrovault.core.ui.theme.PulsarText
 import com.retrovault.core.ui.theme.PulsarTextDim
 import com.retrovault.core.ui.theme.PulsarYellow
+import com.retrovault.download.BiosStatus
+import com.retrovault.emulator.CoreCatalog
 import com.retrovault.emulator.CoreStatus
+import com.retrovault.emulator.DeviceCapabilities
 import com.retrovault.emulator.EmulatorSession
 import com.retrovault.emulator.InputState
 import com.retrovault.emulator.RetroPad
@@ -76,6 +80,15 @@ fun PlayerScreen(title: String, system: GameSystem, onQuit: () -> Unit) {
     var showMenu by remember { mutableStateOf(false) }
     var fastForward by remember { mutableStateOf(false) }
     val running = session.status == CoreStatus.RUNNING
+    val ctx = LocalContext.current
+    val statusMsg = when {
+        running -> "[ ${system.shortCode} GAMEPLAY ]"
+        CoreCatalog.requiresBios(system) && !BiosStatus.isInstalled(ctx, system) ->
+            "IMPORT A ${system.shortCode} BIOS TO PLAY"
+        system == GameSystem.PS2 && !DeviceCapabilities.supportsPs2(ctx) ->
+            "DEVICE MAY NOT RUN PS2 WELL"
+        else -> "CORE COMING SOON · ${system.shortCode}"
+    }
 
     Box(
         Modifier
@@ -110,7 +123,7 @@ fun PlayerScreen(title: String, system: GameSystem, onQuit: () -> Unit) {
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                if (running) "[ ${system.shortCode} GAMEPLAY ]" else "CORE COMING SOON · ${system.shortCode}",
+                statusMsg,
                 fontSize = 10.sp,
                 letterSpacing = 2.sp,
                 color = Color.White.copy(alpha = 0.55f)

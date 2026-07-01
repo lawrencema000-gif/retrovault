@@ -21,6 +21,7 @@ dependencies {
     implementation(project(":core-ui"))
     implementation(project(":core-emulator"))
     implementation(project(":data-saves"))
+    implementation(project(":data-download"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

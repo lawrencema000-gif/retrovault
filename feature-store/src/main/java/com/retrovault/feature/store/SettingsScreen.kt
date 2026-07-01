@@ -50,6 +50,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import com.retrovault.core.model.GameSystem
+import com.retrovault.download.BiosStatus
+import com.retrovault.download.RomImporter
 import com.retrovault.core.ui.theme.ChakraPetch
 import com.retrovault.core.ui.theme.PulsarAccentBrush
 import com.retrovault.core.ui.theme.PulsarBlueBrush
@@ -74,6 +80,17 @@ fun SettingsScreen() {
     var vol by remember { mutableFloatStateOf(0.8f) }
     var autosave by remember { mutableStateOf(true) }
     var rewind by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
+    var biosTick by remember { mutableIntStateOf(0) }
+    val ps1Bios = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { RomImporter.importBios(context, GameSystem.PS1, it); biosTick++ }
+    }
+    val ps2Bios = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { RomImporter.importBios(context, GameSystem.PS2, it); biosTick++ }
+    }
+    val ps1BiosInstalled = remember(biosTick) { BiosStatus.isInstalled(context, GameSystem.PS1) }
+    val ps2BiosInstalled = remember(biosTick) { BiosStatus.isInstalled(context, GameSystem.PS2) }
 
     Column(
         Modifier
@@ -106,9 +123,13 @@ fun SettingsScreen() {
             NavRow(Icons.Filled.VideogameAsset, PulsarYellow, "Controller Mapping")
         }
 
-        Section("SYSTEM") {
-            StatusRow(Icons.Filled.Memory, PulsarPrimary, "BIOS Status", "Not loaded", PulsarTextFaint, showCheck = false)
+        Section("BIOS") {
+            BiosRow("PlayStation", ps1BiosInstalled) { ps1Bios.launch(arrayOf("*/*")) }
             Divider()
+            BiosRow("PlayStation 2", ps2BiosInstalled) { ps2Bios.launch(arrayOf("*/*")) }
+        }
+
+        Section("SYSTEM") {
             StatusRow(Icons.Filled.Info, PulsarTextBody, "Version", "PULSAR 0.1.0", PulsarTextDim, showCheck = false)
         }
 
@@ -197,6 +218,29 @@ private fun StatusRow(icon: ImageVector, tint: Color, label: String, value: Stri
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             if (showCheck) Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = PulsarTeal, modifier = Modifier.size(16.dp))
             Text(value, fontSize = 12.sp, color = valueColor, fontFamily = ChakraPetch)
+        }
+    }
+}
+
+@Composable
+private fun BiosRow(label: String, installed: Boolean, onImport: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onImport)
+            .padding(horizontal = 16.dp, vertical = 15.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        RowIcon(Icons.Filled.Memory, PulsarPrimary, "$label BIOS")
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (installed) {
+                Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = PulsarTeal, modifier = Modifier.size(16.dp))
+                Text("Installed", fontSize = 12.sp, color = PulsarTeal, fontFamily = ChakraPetch)
+            } else {
+                Text("Import", fontSize = 12.sp, color = PulsarTextFaint, fontFamily = ChakraPetch)
+            }
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = PulsarTextDim, modifier = Modifier.size(18.dp))
         }
     }
 }

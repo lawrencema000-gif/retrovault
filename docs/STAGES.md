@@ -1,6 +1,6 @@
 # RetroVault / Pulsar — Stage Tracker
 
-> **Foundation-first build in progress (per user): laying every stage's structure, then one polish+integration pass. Stages 4-6 foundation laid → building Stages 7-8.**
+> **Foundation-first build in progress (per user): laying every stage's structure, then one polish+integration pass. Stages 4-8 foundation laid → building Stages 9-10.**
 
 This is the single source of truth for what stage the app is at. Every working session shows
 which stage we're on and updates this file.
@@ -16,8 +16,8 @@ Legend: done ✅ · foundation laid 🧱 (structure/UI done; functional bits in 
 | 4 | **PSP emulator core** — libretro JNI host + in-game player screen | 🧱 | `:core-emulator` (JNI facade + C++ host skeleton) + `:feature-player` (player UI) + launch; native core/.so/device = final pass |
 | 5 | **Downloads + import** — WorkManager pipeline, BYO-ROM (SAF), signed-URL Edge Function | 🧱 | `:data-download` + import UI + deployed `get-download-url`; R2 hosting = final pass (needs Cloudflare acct) |
 | 6 | **Accounts + cloud saves** — GoTrue auth client + `:data-saves` (store + sync) + Save-States/Controller screens | 🧱 | client + UI done; sign-in UI + real sync = final pass |
-| 7 | **PS1 core** — SwanStation + user BIOS import | ⬜ | |
-| 8 | **PS2 core** — ARMSX2, device-capability gated | ⬜ | |
+| 7 | **PS1 core** — SwanStation mapping + user BIOS import | 🧱 | core mapping + BIOS import/status; core `.so` + device = final pass |
+| 8 | **PS2 core** — ARMSX2 mapping, device-capability gate | 🧱 | mapping + RAM/OS gate + BIOS; core `.so` + device = final pass |
 | 9 | **Monetization** — AdMob free tier + "Pulsar Gold" IAP | ⬜ | |
 | 10 | **Distribution** — Google Play + F-Droid + direct APK, dev verification | 🔒 | needs Play/dev accounts |
 

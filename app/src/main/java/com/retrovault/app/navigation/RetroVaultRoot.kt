@@ -15,10 +15,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.retrovault.app.ui.screens.GameDetailScreen
-import com.retrovault.app.ui.screens.HomeScreen
-import com.retrovault.app.ui.screens.LibraryScreen
-import com.retrovault.app.ui.screens.SettingsScreen
+import com.retrovault.feature.store.GameDetailScreen
+import com.retrovault.feature.store.HomeScreen
+import com.retrovault.feature.store.LibraryScreen
+import com.retrovault.feature.store.SettingsScreen
 
 @Composable
 fun RetroVaultRoot() {

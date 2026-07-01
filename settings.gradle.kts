@@ -22,3 +22,7 @@ dependencyResolutionManagement {
 
 rootProject.name = "RetroVault"
 include(":app")
+include(":core-model")
+include(":core-ui")
+include(":data-supabase")
+include(":feature-store")

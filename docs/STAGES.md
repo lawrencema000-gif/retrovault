@@ -1,6 +1,6 @@
 # RetroVault / Pulsar — Stage Tracker
 
-> **CURRENT STAGE → Stage 3: UI/UX implementation (Pulsar design system)**
+> **Stage 3 UI complete (pending on-device review) → ready for Stage 4 (PSP core) or Stage 5 (downloads)**
 
 This is the single source of truth for what stage the app is at. Every working session shows
 which stage we're on and updates this file.
@@ -12,7 +12,7 @@ Legend: done ✅ · in progress 🔄 · not started ⬜ · blocked 🔒 (needs e
 | 0 | **Foundations** — Kotlin/Compose scaffold, GitHub repo, verified build | ✅ | commit `d29ee36` |
 | 1 | **Backend** — Supabase schema, RLS, storage, catalog wired over PostgREST | ✅ | project `mxasjicdkryaqugrccdo` |
 | 2 | **Multi-module architecture** — core-model / core-ui / data-supabase / feature-store / app | ✅ | commit `3116911` |
-| 3 | **UI/UX implementation** — Pulsar design system + screens | 🔄 **CURRENT** | from Claude design `Pulsar.dc.html` |
+| 3 | **UI/UX implementation** — Pulsar design system + screens | ✅ | boot/library/detail/settings + nav; player/saves/controls come at 4/6 |
 | 4 | **PSP emulator core** — PPSSPP via libretro/JNI + in-game player screen | ⬜ | needs NDK + core .so + test device |
 | 5 | **Downloads + import** — Cloudflare R2, WorkManager pipeline, BYO-ROM (SAF) | 🔒 | needs Cloudflare account |
 | 6 | **Accounts + cloud saves** — supabase-kt auth, save-states + controller screens | ⬜ | |
@@ -27,13 +27,14 @@ The design (`design/pulsar/`) is dark navy, blue `#2a7fff` → teal `#21e6c1`, C
 + Manrope (body), and covers all screens. We implement the browsing surfaces now; the
 player/saves/controller screens are built alongside their functional stages (4/6).
 
-- [ ] Pulsar design system in `:core-ui` — color palette, gradients, Chakra Petch + Manrope fonts
-- [ ] Boot / splash screen (animated logo + PULSAR wordmark)
-- [ ] Library screen — "Your Library", search + avatar, Continue Playing carousel, All Games grid
-- [ ] Floating blurred bottom nav (Library / Saves / Controls / Settings)
-- [ ] Game Detail screen — hero cover, meta chips, play button, action row, about
-- [ ] Settings screen — Video / Audio / Emulation / System sections
-- [ ] (Stage 4/6) In-game player, Save States, Controller remap screens
+- [x] Pulsar design system in `:core-ui` — color palette, gradients, Chakra Petch + Manrope fonts
+- [x] Boot / splash screen (logo + PULSAR wordmark + progress)
+- [x] Library screen — "Your Library", search + avatar, Featured carousel, All Games grid
+- [x] Floating bottom nav (Library / Saves / Controls / Settings)
+- [x] Game Detail screen — hero cover, meta chips, play button, action row, about
+- [x] Settings screen — Video / Audio / Emulation / System sections
+- [ ] (Stage 4/6) In-game player, Save States, Controller remap screens — built with the emulator
+- [ ] On-device visual review + polish pass (needs a device/emulator on your side)
 
 ## Branding note
 

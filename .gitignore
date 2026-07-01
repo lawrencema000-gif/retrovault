@@ -1,0 +1,51 @@
+# Built application files
+*.apk
+*.aar
+*.ap_
+*.aab
+
+# Files for the ART/Dalvik VM
+*.dex
+
+# Java class files
+*.class
+
+# Generated files
+bin/
+gen/
+out/
+release/
+
+# Gradle files
+.gradle/
+build/
+
+# Local configuration file (SDK path, etc.)
+local.properties
+
+# Android Studio / IntelliJ
+*.iml
+.idea/
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Keystore files (never commit signing keys)
+*.jks
+*.keystore
+
+# Emulator BIOS / user ROMs must never be committed (legal + size)
+*.bin
+*.BIN
+*.iso
+*.ISO
+*.cso
+*.pbp
+/roms/
+/bios/
+
+# Logs & env
+*.log
+.env
+.env.*

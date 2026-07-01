@@ -1,0 +1,12 @@
+# Keep line endings sane across platforms
+* text=auto
+
+# Gradle wrapper scripts
+gradlew text eol=lf
+*.bat text eol=crlf
+
+# Binary
+*.jar binary
+*.png binary
+*.jpg binary
+*.webp binary

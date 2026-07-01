@@ -4,25 +4,27 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 
-private val RetroVaultColorScheme = darkColorScheme(
-    primary = RvPrimary,
-    onPrimary = RvOnPrimary,
-    secondary = RvSecondary,
-    background = RvBackground,
-    onBackground = RvOnBackground,
-    surface = RvSurface,
-    onSurface = RvOnBackground,
-    surfaceVariant = RvSurfaceVariant,
-    onSurfaceVariant = RvOnSurfaceVariant,
-    outline = RvOutline
+private val PulsarColorScheme = darkColorScheme(
+    primary = PulsarPrimary,
+    onPrimary = PulsarOnAccent,
+    secondary = PulsarTeal,
+    onSecondary = PulsarOnAccent,
+    background = PulsarBg,
+    onBackground = PulsarText,
+    surface = PulsarBg,
+    onSurface = PulsarText,
+    surfaceVariant = PulsarSurfaceVariant,
+    onSurfaceVariant = PulsarTextDim,
+    outline = PulsarOutline,
+    error = PulsarRed,
 )
 
-/** Dark-first theme for the storefront. */
+/** Pulsar dark theme — dark-navy base, blue→teal accents, Chakra Petch + Manrope. */
 @Composable
-fun RetroVaultTheme(content: @Composable () -> Unit) {
+fun PulsarTheme(content: @Composable () -> Unit) {
     MaterialTheme(
-        colorScheme = RetroVaultColorScheme,
-        typography = RetroVaultTypography,
+        colorScheme = PulsarColorScheme,
+        typography = PulsarTypography,
         content = content
     )
 }

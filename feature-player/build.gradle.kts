@@ -20,6 +20,7 @@ dependencies {
     implementation(project(":core-model"))
     implementation(project(":core-ui"))
     implementation(project(":core-emulator"))
+    implementation(project(":data-saves"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

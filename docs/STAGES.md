@@ -1,6 +1,6 @@
 # RetroVault / Pulsar — Stage Tracker
 
-> **Foundation-first build in progress (per user): laying every stage's structure, then one polish+integration pass. Stages 4-5 foundation laid → building Stage 6.**
+> **Foundation-first build in progress (per user): laying every stage's structure, then one polish+integration pass. Stages 4-6 foundation laid → building Stages 7-8.**
 
 This is the single source of truth for what stage the app is at. Every working session shows
 which stage we're on and updates this file.
@@ -15,7 +15,7 @@ Legend: done ✅ · foundation laid 🧱 (structure/UI done; functional bits in 
 | 3 | **UI/UX implementation** — Pulsar design system + screens | ✅ | boot/library/detail/settings + nav; player/saves/controls come at 4/6 |
 | 4 | **PSP emulator core** — libretro JNI host + in-game player screen | 🧱 | `:core-emulator` (JNI facade + C++ host skeleton) + `:feature-player` (player UI) + launch; native core/.so/device = final pass |
 | 5 | **Downloads + import** — WorkManager pipeline, BYO-ROM (SAF), signed-URL Edge Function | 🧱 | `:data-download` + import UI + deployed `get-download-url`; R2 hosting = final pass (needs Cloudflare acct) |
-| 6 | **Accounts + cloud saves** — supabase-kt auth, save-states + controller screens | ⬜ | |
+| 6 | **Accounts + cloud saves** — GoTrue auth client + `:data-saves` (store + sync) + Save-States/Controller screens | 🧱 | client + UI done; sign-in UI + real sync = final pass |
 | 7 | **PS1 core** — SwanStation + user BIOS import | ⬜ | |
 | 8 | **PS2 core** — ARMSX2, device-capability gated | ⬜ | |
 | 9 | **Monetization** — AdMob free tier + "Pulsar Gold" IAP | ⬜ | |

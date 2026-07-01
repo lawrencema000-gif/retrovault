@@ -22,6 +22,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -36,6 +37,7 @@ import com.retrovault.core.ui.theme.PulsarTextFaint
 import com.retrovault.feature.store.BootScreen
 import com.retrovault.feature.store.ControlsScreen
 import com.retrovault.feature.store.GameDetailScreen
+import com.retrovault.feature.player.EmulatorActivity
 import com.retrovault.feature.store.HomeScreen
 import com.retrovault.feature.store.SavesScreen
 import com.retrovault.feature.store.SettingsScreen
@@ -80,7 +82,14 @@ fun RetroVaultRoot() {
                 arguments = listOf(navArgument("gameId") { type = NavType.StringType })
             ) { entry ->
                 val gameId = entry.arguments?.getString("gameId").orEmpty()
-                GameDetailScreen(gameId = gameId, onBack = { navController.popBackStack() })
+                val context = LocalContext.current
+                GameDetailScreen(
+                    gameId = gameId,
+                    onBack = { navController.popBackStack() },
+                    onPlay = { id, title, system ->
+                        context.startActivity(EmulatorActivity.intent(context, id, title, system))
+                    }
+                )
             }
         }
 

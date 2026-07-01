@@ -46,8 +46,10 @@ android {
 
 dependencies {
     // Feature + core modules
+    implementation(project(":core-model"))
     implementation(project(":core-ui"))
     implementation(project(":feature-store"))
+    implementation(project(":feature-player"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

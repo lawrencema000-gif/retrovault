@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!-- Runs in a separate :emu process so a native core crash can't take down the store UI. -->
+        <activity
+            android:name="com.retrovault.feature.player.EmulatorActivity"
+            android:exported="false"
+            android:process=":emu"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="orientation|screenSize|keyboardHidden|keyboard"
+            android:launchMode="singleTask" />
+    </application>
+</manifest>

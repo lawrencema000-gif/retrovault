@@ -20,7 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.MoreHoriz
@@ -43,6 +43,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.retrovault.core.model.GameSystem
 import com.retrovault.core.model.formatBytes
 import com.retrovault.core.ui.coverBrush
 import com.retrovault.core.ui.theme.ChakraPetch
@@ -66,7 +67,11 @@ import com.retrovault.data.CatalogRepository
 import com.retrovault.data.SupabaseCatalogRepository
 
 @Composable
-fun GameDetailScreen(gameId: String, onBack: () -> Unit) {
+fun GameDetailScreen(
+    gameId: String,
+    onBack: () -> Unit,
+    onPlay: (String, String, GameSystem) -> Unit = { _, _, _ -> },
+) {
     val game = remember(gameId) {
         SupabaseCatalogRepository.cachedById(gameId) ?: CatalogRepository.byId(gameId)
     }
@@ -79,7 +84,6 @@ fun GameDetailScreen(gameId: String, onBack: () -> Unit) {
     }
 
     val cover = coverBrush(game.id)
-    val canDownload = game.downloadUrl != null
 
     Box(Modifier.fillMaxSize()) {
         // hero wash + scrim down to the base background
@@ -175,27 +179,24 @@ fun GameDetailScreen(gameId: String, onBack: () -> Unit) {
                     .fillMaxWidth()
                     .height(60.dp)
                     .clip(RoundedCornerShape(18.dp))
-                    .then(
-                        if (canDownload) Modifier.background(PulsarAccentBrush)
-                        else Modifier.background(PulsarSurface2).border(1.dp, PulsarStroke, RoundedCornerShape(18.dp))
-                    )
-                    .clickable(enabled = canDownload) { /* TODO: download + play */ },
+                    .background(PulsarAccentBrush)
+                    .clickable { onPlay(game.id, game.title, game.system) },
                 contentAlignment = Alignment.Center
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Icon(
-                        Icons.Filled.Download,
+                        Icons.Filled.PlayArrow,
                         contentDescription = null,
-                        tint = if (canDownload) PulsarOnAccent else PulsarTextFaint,
-                        modifier = Modifier.size(26.dp)
+                        tint = PulsarOnAccent,
+                        modifier = Modifier.size(28.dp)
                     )
                     Text(
-                        if (canDownload) "DOWNLOAD & PLAY" else "COMING SOON",
+                        "PLAY",
                         fontFamily = ChakraPetch,
                         fontWeight = FontWeight.Bold,
                         fontSize = 16.sp,
                         letterSpacing = 2.sp,
-                        color = if (canDownload) PulsarOnAccent else PulsarTextFaint
+                        color = PulsarOnAccent
                     )
                 }
             }

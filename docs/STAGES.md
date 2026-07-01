@@ -1,11 +1,11 @@
 # RetroVault / Pulsar — Stage Tracker
 
-> **Stage 3 UI complete (pending on-device review) → ready for Stage 4 (PSP core) or Stage 5 (downloads)**
+> **Foundation-first build in progress (per user): laying every stage's structure, then one polish+integration pass. Stage 4 foundation laid → building Stage 5.**
 
 This is the single source of truth for what stage the app is at. Every working session shows
 which stage we're on and updates this file.
 
-Legend: done ✅ · in progress 🔄 · not started ⬜ · blocked 🔒 (needs external resource)
+Legend: done ✅ · foundation laid 🧱 (structure/UI done; functional bits in the final integration pass) · in progress 🔄 · not started ⬜ · blocked 🔒 (needs external resource)
 
 | # | Stage | Status | Notes |
 |---|-------|--------|-------|
@@ -13,7 +13,7 @@ Legend: done ✅ · in progress 🔄 · not started ⬜ · blocked 🔒 (needs e
 | 1 | **Backend** — Supabase schema, RLS, storage, catalog wired over PostgREST | ✅ | project `mxasjicdkryaqugrccdo` |
 | 2 | **Multi-module architecture** — core-model / core-ui / data-supabase / feature-store / app | ✅ | commit `3116911` |
 | 3 | **UI/UX implementation** — Pulsar design system + screens | ✅ | boot/library/detail/settings + nav; player/saves/controls come at 4/6 |
-| 4 | **PSP emulator core** — PPSSPP via libretro/JNI + in-game player screen | ⬜ | needs NDK + core .so + test device |
+| 4 | **PSP emulator core** — libretro JNI host + in-game player screen | 🧱 | `:core-emulator` (JNI facade + C++ host skeleton) + `:feature-player` (player UI) + launch; native core/.so/device = final pass |
 | 5 | **Downloads + import** — Cloudflare R2, WorkManager pipeline, BYO-ROM (SAF) | 🔒 | needs Cloudflare account |
 | 6 | **Accounts + cloud saves** — supabase-kt auth, save-states + controller screens | ⬜ | |
 | 7 | **PS1 core** — SwanStation + user BIOS import | ⬜ | |

@@ -42,7 +42,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import com.retrovault.core.model.Game
+import com.retrovault.download.RomImporter
 import com.retrovault.core.ui.coverBrush
 import com.retrovault.core.ui.theme.ChakraPetch
 import com.retrovault.core.ui.theme.PulsarBlueBrush
@@ -68,6 +74,11 @@ fun HomeScreen(
     val loading = uiState is CatalogUiState.Loading
     val offline = uiState is CatalogUiState.Offline
 
+    val context = LocalContext.current
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { RomImporter.import(context, it) }
+    }
+
     Column(
         Modifier
             .fillMaxSize()
@@ -92,7 +103,8 @@ fun HomeScreen(
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                IconTile(onClick = {})
+                IconTile(Icons.Filled.FileUpload) { importLauncher.launch(arrayOf("*/*")) }
+                IconTile(Icons.Filled.Search) {}
                 Box(
                     Modifier
                         .size(42.dp)
@@ -172,7 +184,7 @@ fun HomeScreen(
 }
 
 @Composable
-private fun IconTile(onClick: () -> Unit) {
+private fun IconTile(icon: ImageVector, onClick: () -> Unit) {
     Box(
         Modifier
             .size(42.dp)
@@ -182,7 +194,7 @@ private fun IconTile(onClick: () -> Unit) {
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        Icon(Icons.Filled.Search, contentDescription = "Search", tint = PulsarTextSoft, modifier = Modifier.size(22.dp))
+        Icon(icon, contentDescription = null, tint = PulsarTextSoft, modifier = Modifier.size(22.dp))
     }
 }
 

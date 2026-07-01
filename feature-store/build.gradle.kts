@@ -20,6 +20,7 @@ dependencies {
     implementation(project(":core-model"))
     implementation(project(":core-ui"))
     implementation(project(":data-supabase"))
+    implementation(project(":data-download"))
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)
@@ -28,6 +29,7 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.activity.compose)
     implementation(libs.coil.compose)
 
     debugImplementation(libs.androidx.ui.tooling)

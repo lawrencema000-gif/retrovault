@@ -13,6 +13,7 @@ on:
 env:
   # Pinned upstream revisions — update deliberately, never track master.
   PPSSPP_REF: "v1.20.4" # fa50bb1976065c4f8b1b47af227d367fe9771555
+  SAMPLES_REF: "bce193bc1b8c9a3da43b2ead0158a69e28b37ed8" # libretro-samples (test cores)
   ANDROID_PLATFORM: "android-26"
 
 jobs:
@@ -82,4 +83,68 @@ jobs:
         with:
           name: ppsspp_libretro-${{ matrix.abi }}-${{ env.PPSSPP_REF }}
           path: out/${{ matrix.abi }}/ppsspp_libretro_android.so
+          if-no-files-found: error
+
+  test-cores:
+    name: test cores (${{ matrix.abi }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        abi: [arm64-v8a, x86_64]
+    steps:
+      - name: Checkout libretro-samples (pinned)
+        uses: actions/checkout@v4
+        with:
+          repository: libretro/libretro-samples
+          ref: ${{ env.SAMPLES_REF }}
+          fetch-depth: 1
+
+      - name: Setup NDK r28c
+        id: ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r28c
+          add-to-path: false
+
+      - name: Build test cores
+        run: |
+          case "${{ matrix.abi }}" in
+            arm64-v8a) TRIPLE=aarch64-linux-android26 ;;
+            x86_64)    TRIPLE=x86_64-linux-android26 ;;
+          esac
+          CC="${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/${TRIPLE}-clang"
+          GLDIR=video/opengl/libretro_test_gl_shaders
+          mkdir -p out/${{ matrix.abi }}
+
+          # Software-framebuffer test core (validates the blit/present path)
+          $CC -O2 -fPIC -shared -Wl,-z,max-page-size=16384 \
+            -I "$GLDIR" -I tests/test \
+            tests/test/libretro-test.c \
+            -o out/${{ matrix.abi }}/retro_test_libretro_android.so
+
+          # GLES2 hw-render test core (validates SET_HW_RENDER / FBO path)
+          $CC -O2 -fPIC -shared -DGLES -Wl,-z,max-page-size=16384 \
+            -I "$GLDIR" -I "$GLDIR/glsym" \
+            "$GLDIR/libretro_gl_test.c" \
+            "$GLDIR"/glsym/rglgen.c "$GLDIR"/glsym/glsym_es2.c \
+            -lGLESv2 -lEGL -ldl \
+            -o out/${{ matrix.abi }}/testgl_libretro_android.so
+
+          ls -la out/${{ matrix.abi }}
+
+      - name: Gate - 16KB LOAD alignment
+        run: |
+          READELF="${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+          for SO in out/${{ matrix.abi }}/*.so; do
+            "$READELF" -l "$SO" > readelf.txt
+            BAD=$(awk '/LOAD/ { if ($NF != "0x4000" && $NF != "0x10000") print }' readelf.txt)
+            if [ -n "$BAD" ]; then echo "::error::$SO not 16KB-aligned"; exit 1; fi
+            echo "$SO OK"
+          done
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-cores-${{ matrix.abi }}-${{ env.SAMPLES_REF }}
+          path: out/${{ matrix.abi }}/*.so
           if-no-files-found: error

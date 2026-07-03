@@ -1,6 +1,14 @@
 # RetroVault / Pulsar — Stage Tracker
 
-> **✅ All 10 stages' foundations laid and building green. → Ready for the final integration + polish pass (NDK + real cores + on-device review + external accounts).**
+> **✅ All 10 stages' foundations laid and building green.**
+> **📋 Execution now follows [`MASTERPLAN.md`](MASTERPLAN.md) — 27 steps (P1–P27), one per session.**
+> **📍 CURRENT STEP → P1: NDK enablement + core build pipeline (16KB-compliant)**
+
+The original stages map to master-plan steps: Stage 4 → P1–P5 · Stage 3 polish → P7–P8, P17, P19 ·
+Stage 5 → P15 · Stage 6 → P16 · Stage 7 → P23–P24 · Stage 8 → P25–P26 · Stage 9 → P21 ·
+Stage 10 → P22. New capability steps: P6 (library ID), P9 (gamepad), P10 (states/rewind/FF),
+P11 (settings framework), P12–P13 (compat GameDB), P14 (cheats), P18 (thermal), P20 (RetroAchievements),
+P27 (skins/widgets/netplay).
 
 This is the single source of truth for what stage the app is at. Every working session shows
 which stage we're on and updates this file.

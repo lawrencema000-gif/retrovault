@@ -1,12 +1,15 @@
 package com.retrovault.emulator
 
+import android.app.Activity
+import android.view.Surface
+
 /**
- * JNI boundary to the native libretro host (`src/main/cpp`, compiled with the NDK in the final
- * integration pass). The host `dlopen`s a per-system libretro core `.so`
- * (e.g. `ppsspp_libretro_android.so`) and drives its `retro_*` lifecycle.
+ * JNI boundary to the native libretro host (`src/main/cpp`).
  *
- * Until the native library `pulsar_retro` is built AND a core is installed, [available] is false
- * and the player renders a "core not installed" state instead of calling into native code.
+ * Threading contract: [nativeRunLoop] blocks and must run on a dedicated thread — it performs
+ * EGL init + core dlopen + `retro_load_game` + the frame loop on that thread so that GL
+ * environment callbacks (SET_HW_RENDER) fire with the context current. Everything else may be
+ * called from any thread.
  */
 object LibretroBridge {
 
@@ -16,29 +19,44 @@ object LibretroBridge {
      * dlopen a core and return "name\nversion\nextensions\napiVersion" from
      * `retro_get_system_info`/`retro_api_version` without initializing it. Null on failure.
      * (Newline-separated: the extensions field is itself pipe-delimited, e.g. "elf|iso|cso".)
-     * The P1 smoke test that a core binary is loadable on this device/ABI.
      */
     external fun nativeProbeCore(corePath: String): String?
 
-    /** Load a libretro core `.so` by absolute path. */
-    external fun nativeInit(corePath: String): Boolean
+    /** Initialize AGDK Swappy frame pacing for this activity (safe no-op if unsupported). */
+    external fun nativeInitSwappy(activity: Activity)
 
-    /** Load a ROM/ISO into the initialized core. */
-    external fun nativeLoadGame(gamePath: String): Boolean
+    /** Stage a session: core path, optional game path (null = no-content), core dirs. */
+    external fun nativeStartSession(
+        corePath: String,
+        gamePath: String?,
+        systemDir: String,
+        saveDir: String,
+    )
 
-    /** Provide the render Surface (ANativeWindow) the core draws into. */
-    external fun nativeSetSurface(surface: Any?)
+    /** Provide/revoke the render Surface. Callable from the main thread at any time. */
+    external fun nativeSetVideoSurface(surface: Surface?)
 
-    /** Advance one frame (`retro_run`). Called on the render thread. */
-    external fun nativeRunFrame()
+    /**
+     * Run the emulator session to completion (blocks until [nativeRequestStop]).
+     * Returns false if the core/game failed to load. Call on a dedicated thread.
+     */
+    external fun nativeRunLoop(): Boolean
 
-    /** Push the current input state for a port before the next frame. */
+    /** Ask the run loop to exit; it unloads the core and tears down EGL on its way out. */
+    external fun nativeRequestStop()
+
+    external fun nativeIsRunning(): Boolean
+
+    /** Push the current input state for a port (RetroPad bitmask + left-analog axes). */
     external fun nativeSetInput(port: Int, buttons: Int, analogLX: Int, analogLY: Int)
 
+    // ---- video stats (P2 acceptance + future debug overlay) ----
+    external fun nativeFramesPresented(): Long
+    external fun nativeAvgFrameIntervalUs(): Long
+    external fun nativeSwappyActive(): Boolean
+
+    // ---- save states (functional from P10) ----
     external fun nativeSerializeSize(): Int
     external fun nativeSerialize(): ByteArray?
     external fun nativeUnserialize(data: ByteArray): Boolean
-
-    /** Tear down the game + core (`retro_unload_game` + `retro_deinit`). */
-    external fun nativeUnload()
 }

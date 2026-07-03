@@ -123,7 +123,7 @@ jobs:
             -o out/${{ matrix.abi }}/retro_test_libretro_android.so
 
           # GLES2 hw-render test core (validates SET_HW_RENDER / FBO path)
-          $CC -O2 -fPIC -shared -DGLES -Wl,-z,max-page-size=16384 \
+          $CC -O2 -fPIC -shared -DHAVE_OPENGLES -DHAVE_OPENGLES2 -Wl,-z,max-page-size=16384 \
             -I "$GLDIR" -I "$GLDIR/glsym" \
             "$GLDIR/libretro_gl_test.c" \
             "$GLDIR"/glsym/rglgen.c "$GLDIR"/glsym/glsym_es2.c \

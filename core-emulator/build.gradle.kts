@@ -17,6 +17,12 @@ android {
             // arm64 for devices; x86_64 so the Android-emulator image can run the host too.
             abiFilters += listOf("arm64-v8a", "x86_64")
         }
+        externalNativeBuild {
+            cmake {
+                // Swappy's prefab package requires the shared C++ STL.
+                arguments("-DANDROID_STL=c++_shared")
+            }
+        }
     }
 
     externalNativeBuild {
@@ -24,6 +30,10 @@ android {
             path = file("src/main/cpp/CMakeLists.txt")
             version = "3.22.1"
         }
+    }
+
+    buildFeatures {
+        prefab = true // consume AGDK Swappy (games-frame-pacing) from its AAR
     }
 
     compileOptions {
@@ -35,4 +45,5 @@ android {
 
 dependencies {
     implementation(project(":core-model"))
+    implementation(libs.games.frame.pacing)
 }

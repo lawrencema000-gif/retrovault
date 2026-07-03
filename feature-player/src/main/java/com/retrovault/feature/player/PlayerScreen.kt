@@ -1,5 +1,7 @@
 package com.retrovault.feature.player
 
+import android.view.SurfaceHolder
+import android.view.SurfaceView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,12 +22,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.FastForward
-import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Menu
@@ -34,6 +36,7 @@ import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,6 +53,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import com.retrovault.core.model.GameSystem
 import com.retrovault.core.ui.coverBrush
 import com.retrovault.core.ui.theme.ChakraPetch
@@ -67,7 +71,7 @@ import com.retrovault.emulator.CoreCatalog
 import com.retrovault.emulator.CoreStatus
 import com.retrovault.emulator.DeviceCapabilities
 import com.retrovault.emulator.EmulatorSession
-import com.retrovault.emulator.InputState
+import com.retrovault.emulator.LibretroBridge
 import com.retrovault.emulator.RetroPad
 
 private val Glass = Color(0x9910161F)
@@ -75,19 +79,24 @@ private val HudGlass = Color(0x99080C14)
 private val ControlIcon = Color(0xFF8EA3C8)
 
 @Composable
-fun PlayerScreen(title: String, system: GameSystem, onQuit: () -> Unit) {
-    val session = remember { EmulatorSession().apply { start(system, gamePath = null) } }
+fun PlayerScreen(
+    title: String,
+    system: GameSystem,
+    session: EmulatorSession,
+    onQuit: () -> Unit,
+) {
     var showMenu by remember { mutableStateOf(false) }
     var fastForward by remember { mutableStateOf(false) }
     val running = session.status == CoreStatus.RUNNING
     val ctx = LocalContext.current
     val statusMsg = when {
-        running -> "[ ${system.shortCode} GAMEPLAY ]"
+        running -> null
         CoreCatalog.requiresBios(system) && !BiosStatus.isInstalled(ctx, system) ->
             "IMPORT A ${system.shortCode} BIOS TO PLAY"
         system == GameSystem.PS2 && !DeviceCapabilities.supportsPs2(ctx) ->
             "DEVICE MAY NOT RUN PS2 WELL"
-        else -> "CORE COMING SOON · ${system.shortCode}"
+        session.status == CoreStatus.ERROR -> "CORE FAILED TO START"
+        else -> "NO GAME LOADED · ${system.shortCode}"
     }
 
     Box(
@@ -95,39 +104,69 @@ fun PlayerScreen(title: String, system: GameSystem, onQuit: () -> Unit) {
             .fillMaxSize()
             .background(Color.Black)
     ) {
-        // gameplay viewport (a Surface-backed renderer replaces this at core integration)
-        Box(Modifier.fillMaxSize().background(coverBrush(title)))
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(Brush.radialGradient(0.4f to Color.Transparent, 1f to Color(0x8C000000)))
-        )
+        if (running) {
+            // Emulator viewport: the native host renders into this SurfaceView.
+            AndroidView(
+                factory = { context ->
+                    SurfaceView(context).apply {
+                        holder.addCallback(object : SurfaceHolder.Callback {
+                            override fun surfaceCreated(holder: SurfaceHolder) {
+                                LibretroBridge.nativeSetVideoSurface(holder.surface)
+                            }
 
-        // center status
-        Column(
-            Modifier
-                .align(Alignment.Center)
-                .padding(horizontal = 40.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Icon(Icons.Filled.SportsEsports, null, tint = Color.White.copy(alpha = 0.85f), modifier = Modifier.size(46.dp))
-            Spacer(Modifier.height(8.dp))
-            Text(
-                title,
-                fontFamily = ChakraPetch,
-                fontWeight = FontWeight.Bold,
-                fontSize = 15.sp,
-                letterSpacing = 3.sp,
-                color = Color.White.copy(alpha = 0.85f),
-                textAlign = TextAlign.Center
+                            override fun surfaceChanged(
+                                holder: SurfaceHolder, format: Int, width: Int, height: Int,
+                            ) {
+                                LibretroBridge.nativeSetVideoSurface(holder.surface)
+                            }
+
+                            override fun surfaceDestroyed(holder: SurfaceHolder) {
+                                LibretroBridge.nativeSetVideoSurface(null)
+                            }
+                        })
+                    }
+                },
+                modifier = Modifier.fillMaxSize()
             )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                statusMsg,
-                fontSize = 10.sp,
-                letterSpacing = 2.sp,
-                color = Color.White.copy(alpha = 0.55f)
+            DisposableEffect(Unit) {
+                onDispose { LibretroBridge.nativeSetVideoSurface(null) }
+            }
+        } else {
+            // No running core: branded standby backdrop + status.
+            Box(Modifier.fillMaxSize().background(coverBrush(title)))
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(Brush.radialGradient(0.4f to Color.Transparent, 1f to Color(0x8C000000)))
             )
+            Column(
+                Modifier
+                    .align(Alignment.Center)
+                    .padding(horizontal = 40.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    Icons.Filled.SportsEsports, null,
+                    tint = Color.White.copy(alpha = 0.85f), modifier = Modifier.size(46.dp)
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    title,
+                    fontFamily = ChakraPetch,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    letterSpacing = 3.sp,
+                    color = Color.White.copy(alpha = 0.85f),
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    statusMsg ?: "",
+                    fontSize = 10.sp,
+                    letterSpacing = 2.sp,
+                    color = Color.White.copy(alpha = 0.55f)
+                )
+            }
         }
 
         // top HUD
@@ -151,13 +190,13 @@ fun PlayerScreen(title: String, system: GameSystem, onQuit: () -> Unit) {
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (fastForward) Chip("2×", PulsarPrimary, Color(0x402A7FFF))
-                Chip(if (running) "60 FPS" else "-- FPS", Color.White.copy(alpha = 0.75f), HudGlass)
+                Chip(if (running) "ON" else "--", Color.White.copy(alpha = 0.75f), HudGlass)
             }
         }
 
         // shoulder buttons
-        HoldPill("L", session.input, RetroPad.L, Modifier.align(Alignment.CenterStart).padding(top = 40.dp))
-        HoldPill("R", session.input, RetroPad.R, Modifier.align(Alignment.CenterEnd).padding(top = 40.dp))
+        HoldPill("L", session, RetroPad.L, Modifier.align(Alignment.CenterStart).padding(top = 40.dp))
+        HoldPill("R", session, RetroPad.R, Modifier.align(Alignment.CenterEnd).padding(top = 40.dp))
 
         // bottom controls
         Row(
@@ -168,12 +207,12 @@ fun PlayerScreen(title: String, system: GameSystem, onQuit: () -> Unit) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.Bottom
         ) {
-            Dpad(session.input)
+            Dpad(session)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                HoldPill("SELECT", session.input, RetroPad.SELECT)
-                HoldPill("START", session.input, RetroPad.START)
+                HoldPill("SELECT", session, RetroPad.SELECT)
+                HoldPill("START", session, RetroPad.START)
             }
-            FaceButtons(session.input)
+            FaceButtons(session)
         }
 
         if (showMenu) {
@@ -190,16 +229,18 @@ fun PlayerScreen(title: String, system: GameSystem, onQuit: () -> Unit) {
 
 /* ---- input helper ---- */
 
-private fun Modifier.holdable(onChange: (Boolean) -> Unit): Modifier = pointerInput(Unit) {
+private fun Modifier.holdable(session: EmulatorSession, mask: Int): Modifier = pointerInput(Unit) {
     awaitEachGesture {
         awaitFirstDown(requireUnconsumed = false)
-        onChange(true)
+        session.input.press(mask)
+        session.syncInput()
         var pressed = true
         while (pressed) {
             val event = awaitPointerEvent()
             pressed = event.changes.any { it.pressed }
         }
-        onChange(false)
+        session.input.release(mask)
+        session.syncInput()
     }
 }
 
@@ -219,59 +260,59 @@ private fun Chip(text: String, textColor: Color, bg: Color) {
 }
 
 @Composable
-private fun Dpad(input: InputState) {
+private fun Dpad(session: EmulatorSession) {
     Box(Modifier.size(118.dp)) {
-        DpadKey(Icons.Filled.KeyboardArrowUp, input, RetroPad.UP, Modifier.align(Alignment.TopCenter))
-        DpadKey(Icons.Filled.KeyboardArrowDown, input, RetroPad.DOWN, Modifier.align(Alignment.BottomCenter))
-        DpadKey(Icons.AutoMirrored.Filled.KeyboardArrowLeft, input, RetroPad.LEFT, Modifier.align(Alignment.CenterStart))
-        DpadKey(Icons.AutoMirrored.Filled.KeyboardArrowRight, input, RetroPad.RIGHT, Modifier.align(Alignment.CenterEnd))
+        DpadKey(Icons.Filled.KeyboardArrowUp, session, RetroPad.UP, Modifier.align(Alignment.TopCenter))
+        DpadKey(Icons.Filled.KeyboardArrowDown, session, RetroPad.DOWN, Modifier.align(Alignment.BottomCenter))
+        DpadKey(Icons.AutoMirrored.Filled.KeyboardArrowLeft, session, RetroPad.LEFT, Modifier.align(Alignment.CenterStart))
+        DpadKey(Icons.AutoMirrored.Filled.KeyboardArrowRight, session, RetroPad.RIGHT, Modifier.align(Alignment.CenterEnd))
     }
 }
 
 @Composable
-private fun DpadKey(icon: ImageVector, input: InputState, mask: Int, modifier: Modifier) {
+private fun DpadKey(icon: ImageVector, session: EmulatorSession, mask: Int, modifier: Modifier) {
     Box(
         modifier
             .size(40.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(Glass)
             .border(1.dp, PulsarStroke, RoundedCornerShape(12.dp))
-            .holdable { input.set(mask, it) },
+            .holdable(session, mask),
         contentAlignment = Alignment.Center
     ) { Icon(icon, null, tint = ControlIcon, modifier = Modifier.size(24.dp)) }
 }
 
 @Composable
-private fun FaceButtons(input: InputState) {
+private fun FaceButtons(session: EmulatorSession) {
     Box(Modifier.size(132.dp)) {
-        FaceKey("△", PulsarTeal, input, RetroPad.X, Modifier.align(Alignment.TopCenter))
-        FaceKey("✕", PulsarBlueSoft, input, RetroPad.B, Modifier.align(Alignment.BottomCenter))
-        FaceKey("□", PulsarPink, input, RetroPad.Y, Modifier.align(Alignment.CenterStart))
-        FaceKey("○", PulsarRed, input, RetroPad.A, Modifier.align(Alignment.CenterEnd))
+        FaceKey("△", PulsarTeal, session, RetroPad.X, Modifier.align(Alignment.TopCenter))
+        FaceKey("✕", PulsarBlueSoft, session, RetroPad.B, Modifier.align(Alignment.BottomCenter))
+        FaceKey("□", PulsarPink, session, RetroPad.Y, Modifier.align(Alignment.CenterStart))
+        FaceKey("○", PulsarRed, session, RetroPad.A, Modifier.align(Alignment.CenterEnd))
     }
 }
 
 @Composable
-private fun FaceKey(symbol: String, color: Color, input: InputState, mask: Int, modifier: Modifier) {
+private fun FaceKey(symbol: String, color: Color, session: EmulatorSession, mask: Int, modifier: Modifier) {
     Box(
         modifier
             .size(48.dp)
             .clip(CircleShape)
             .background(Glass)
             .border(1.dp, color.copy(alpha = 0.5f), CircleShape)
-            .holdable { input.set(mask, it) },
+            .holdable(session, mask),
         contentAlignment = Alignment.Center
     ) { Text(symbol, color = color, fontWeight = FontWeight.Bold, fontSize = 16.sp) }
 }
 
 @Composable
-private fun HoldPill(label: String, input: InputState, mask: Int, modifier: Modifier = Modifier) {
+private fun HoldPill(label: String, session: EmulatorSession, mask: Int, modifier: Modifier = Modifier) {
     Box(
         modifier
             .clip(RoundedCornerShape(20.dp))
             .background(Glass)
             .border(1.dp, PulsarStroke, RoundedCornerShape(20.dp))
-            .holdable { input.set(mask, it) }
+            .holdable(session, mask)
             .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
         Text(label, color = ControlIcon, fontFamily = ChakraPetch, fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 1.sp)

@@ -1,56 +1,87 @@
 package com.retrovault.emulator
 
+import android.content.Context
 import com.retrovault.core.model.GameSystem
+import java.io.File
 
 enum class CoreStatus {
-    /** No core loaded yet. */
+    /** No session started. */
     IDLE,
 
-    /** Native host + core available; would be running the retro_run loop. */
+    /** Run loop active (core loaded; renders when a Surface is attached). */
     RUNNING,
 
-    /** Native host not built yet, or the system's core .so isn't installed. */
+    /** Native host not available, or the required core .so isn't installed. */
     UNAVAILABLE,
 
-    /** Load or runtime error. */
+    /** Core or game failed to load. */
     ERROR,
 }
 
 /**
- * Owns one emulation run. In the integration pass [start] will: resolve + dlopen the core,
- * `nativeLoadGame`, and spin the `retro_run` loop on a dedicated render thread, forwarding
- * [input] each frame. For now it reports whether the native host/core is available so the player
- * UI can show the right state.
+ * Owns one emulation run. [start] stages the session and spins the blocking native run loop on a
+ * dedicated thread; the Surface is attached independently via [LibretroBridge.nativeSetVideoSurface].
  */
 class EmulatorSession {
 
     val input = InputState()
 
+    @Volatile
     var status: CoreStatus = CoreStatus.IDLE
         private set
 
+    private var loopThread: Thread? = null
+
     /**
-     * @param system which console core to run
-     * @param gamePath local path to the ROM/ISO (null = not downloaded / BYO-ROM not chosen yet)
+     * @param coreFileName the core .so name inside the app's native lib dir
+     *                     (e.g. "ppsspp_libretro_android.so" or a test core)
+     * @param gamePath     local path to the ROM/ISO, or null for no-content cores
      */
-    fun start(system: GameSystem, gamePath: String?) {
-        status = when {
-            !LibretroBridge.available -> CoreStatus.UNAVAILABLE
-            gamePath == null -> CoreStatus.UNAVAILABLE
-            else -> {
-                // Integration pass: nativeInit(corePath) → nativeLoadGame(gamePath) → render loop.
-                CoreStatus.RUNNING
-            }
+    fun start(context: Context, coreFileName: String, gamePath: String?) {
+        if (status == CoreStatus.RUNNING) return
+        if (!LibretroBridge.available) {
+            status = CoreStatus.UNAVAILABLE
+            return
         }
+
+        val corePath = File(context.applicationInfo.nativeLibraryDir, coreFileName)
+        if (!corePath.exists()) {
+            status = CoreStatus.UNAVAILABLE
+            return
+        }
+
+        val systemDir = File(context.getExternalFilesDir(null) ?: context.filesDir, "system")
+            .apply { mkdirs() }
+        val saveDir = File(context.getExternalFilesDir(null) ?: context.filesDir, "saves-core")
+            .apply { mkdirs() }
+
+        LibretroBridge.nativeStartSession(
+            corePath.absolutePath, gamePath, systemDir.absolutePath, saveDir.absolutePath
+        )
+        status = CoreStatus.RUNNING
+        loopThread = Thread({
+            val ok = LibretroBridge.nativeRunLoop()
+            status = if (ok) CoreStatus.IDLE else CoreStatus.ERROR
+        }, "PulsarEmuLoop").also { it.start() }
+    }
+
+    fun start(context: Context, system: GameSystem, gamePath: String?) =
+        start(context, "${CoreCatalog.coreLib(system)}.so", gamePath)
+
+    /** Push the input snapshot to the core (call after mutating [input]). */
+    fun syncInput() {
+        LibretroBridge.nativeSetInput(0, input.buttons, input.analogLX, input.analogLY)
+    }
+
+    fun stop() {
+        if (status == CoreStatus.RUNNING || LibretroBridge.nativeIsRunning()) {
+            LibretroBridge.nativeRequestStop()
+            loopThread?.join(3000)
+        }
+        loopThread = null
+        input.clear()
+        if (status == CoreStatus.RUNNING) status = CoreStatus.IDLE
     }
 
     fun coreLib(system: GameSystem): String = CoreCatalog.coreLib(system)
-
-    fun stop() {
-        if (LibretroBridge.available && status == CoreStatus.RUNNING) {
-            LibretroBridge.nativeUnload()
-        }
-        input.clear()
-        status = CoreStatus.IDLE
-    }
 }

@@ -18,6 +18,16 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    packaging {
+        jniLibs {
+            // Extract native libs to disk so cores can be dlopen-ed by absolute path.
+            // Revisit at P22 (Play Asset Delivery / on-demand core download).
+            useLegacyPackaging = true
+        }
     }
 
     buildTypes {
@@ -48,6 +58,7 @@ dependencies {
     // Feature + core modules
     implementation(project(":core-model"))
     implementation(project(":core-ui"))
+    implementation(project(":core-emulator"))
     implementation(project(":feature-store"))
     implementation(project(":feature-player"))
 
@@ -64,4 +75,7 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
 
     debugImplementation(libs.androidx.ui.tooling)
+
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
 }

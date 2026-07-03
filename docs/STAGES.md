@@ -2,7 +2,12 @@
 
 > **✅ All 10 stages' foundations laid and building green.**
 > **📋 Execution now follows [`MASTERPLAN.md`](MASTERPLAN.md) — 27 steps (P1–P27), one per session.**
-> **📍 CURRENT STEP → P1: NDK enablement + core build pipeline (16KB-compliant)**
+> **📍 CURRENT STEP → P2: Video path (SurfaceView + Vulkan/GL host render + Swappy)**
+>
+> ✅ **P1 done (2026-07-04):** NDK r28.2 live; `ppsspp_libretro` v1.20.4 built from pinned source
+> in CI (both ABIs, 16KB readelf gate green); cores fetched+stripped via `scripts/fetch-cores.ps1`;
+> `nativeProbeCore` dlopened the core on the Android-36 emulator image → `PPSSPP v1.20.4`,
+> extensions `elf|iso|cso|prx|pbp|chd`, libretro API 1. ProbeCoreTest: OK (2 tests).
 
 The original stages map to master-plan steps: Stage 4 → P1–P5 · Stage 3 polish → P7–P8, P17, P19 ·
 Stage 5 → P15 · Stage 6 → P16 · Stage 7 → P23–P24 · Stage 8 → P25–P26 · Stage 9 → P21 ·

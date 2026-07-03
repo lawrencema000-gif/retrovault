@@ -35,6 +35,9 @@ captures/
 *.jks
 *.keystore
 
+# Prebuilt libretro cores come from CI artifacts (scripts/fetch-cores.ps1) — never commit
+core-emulator/src/main/jniLibs/**/*.so
+
 # Emulator BIOS / user ROMs must never be committed (legal + size)
 *.bin
 *.BIN

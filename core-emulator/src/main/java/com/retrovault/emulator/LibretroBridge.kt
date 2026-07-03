@@ -13,8 +13,9 @@ object LibretroBridge {
     val available: Boolean = runCatching { System.loadLibrary("pulsar_retro") }.isSuccess
 
     /**
-     * dlopen a core and return "name|version|extensions|apiVersion" from
+     * dlopen a core and return "name\nversion\nextensions\napiVersion" from
      * `retro_get_system_info`/`retro_api_version` without initializing it. Null on failure.
+     * (Newline-separated: the extensions field is itself pipe-delimited, e.g. "elf|iso|cso".)
      * The P1 smoke test that a core binary is loadable on this device/ABI.
      */
     external fun nativeProbeCore(corePath: String): String?

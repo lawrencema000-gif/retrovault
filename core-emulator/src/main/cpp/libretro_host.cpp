@@ -96,8 +96,9 @@ Java_com_retrovault_emulator_LibretroBridge_nativeProbeCore(JNIEnv* env, jobject
 
     retro_system_info info{};
     get_info(&info);
+    // Newline-separated: extensions are themselves pipe-delimited (e.g. "elf|iso|cso").
     char buf[512];
-    snprintf(buf, sizeof(buf), "%s|%s|%s|%u",
+    snprintf(buf, sizeof(buf), "%s\n%s\n%s\n%u",
              info.library_name ? info.library_name : "?",
              info.library_version ? info.library_version : "?",
              info.valid_extensions ? info.valid_extensions : "",

@@ -1,0 +1,85 @@
+name: build-cores
+
+# Builds Pulsar's libretro cores from pinned upstream source with 16 KB page alignment,
+# gates them on llvm-readelf LOAD-segment checks, and uploads the .so artifacts.
+# Core provenance (pins) is documented in NOTICE.md.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/build-cores.yml"
+
+env:
+  # Pinned upstream revisions — update deliberately, never track master.
+  PPSSPP_REF: "v1.20.4" # fa50bb1976065c4f8b1b47af227d367fe9771555
+  ANDROID_PLATFORM: "android-26"
+
+jobs:
+  ppsspp:
+    name: ppsspp_libretro (${{ matrix.abi }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        abi: [arm64-v8a, x86_64]
+    steps:
+      - name: Checkout PPSSPP (pinned)
+        uses: actions/checkout@v4
+        with:
+          repository: hrydgard/ppsspp
+          ref: ${{ env.PPSSPP_REF }}
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Setup NDK r28c
+        id: ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r28c
+          add-to-path: false
+
+      - name: Configure (libretro, ${{ matrix.abi }})
+        run: |
+          cmake -B build-${{ matrix.abi }} \
+            -DCMAKE_TOOLCHAIN_FILE=${{ steps.ndk.outputs.ndk-path }}/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=${{ matrix.abi }} \
+            -DANDROID_PLATFORM=${{ env.ANDROID_PLATFORM }} \
+            -DLIBRETRO=ON \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DANDROID=ON \
+            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-z,max-page-size=16384" \
+            -G Ninja
+
+      - name: Build
+        run: cmake --build build-${{ matrix.abi }} --target ppsspp_libretro -j"$(nproc)"
+
+      - name: Locate output
+        id: locate
+        run: |
+          SO=$(find build-${{ matrix.abi }} -name "ppsspp_libretro*.so" | head -n1)
+          if [ -z "$SO" ]; then echo "core .so not found"; exit 1; fi
+          echo "so=$SO" >> "$GITHUB_OUTPUT"
+          ls -la "$SO"
+
+      - name: Gate - 16KB LOAD alignment
+        run: |
+          READELF="${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+          "$READELF" -l "${{ steps.locate.outputs.so }}" | tee readelf.txt
+          # Every LOAD segment must be aligned 0x4000 (16 KB)
+          BAD=$(awk '/LOAD/ { if ($NF != "0x4000" && $NF != "0x10000") print }' readelf.txt)
+          if [ -n "$BAD" ]; then
+            echo "::error::LOAD segment(s) not 16KB-aligned:"; echo "$BAD"; exit 1
+          fi
+          echo "All LOAD segments 16KB-aligned."
+
+      - name: Rename per ABI
+        run: |
+          mkdir -p out/${{ matrix.abi }}
+          cp "${{ steps.locate.outputs.so }}" out/${{ matrix.abi }}/ppsspp_libretro_android.so
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ppsspp_libretro-${{ matrix.abi }}-${{ env.PPSSPP_REF }}
+          path: out/${{ matrix.abi }}/ppsspp_libretro_android.so
+          if-no-files-found: error

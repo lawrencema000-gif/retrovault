@@ -13,6 +13,7 @@
 #include <android/log.h>
 #include <android/native_window_jni.h>
 #include <cstdint>
+#include <cstdio>
 #include <vector>
 #include "libretro.h"
 
@@ -75,6 +76,35 @@ T sym(void* h, const char* name) { return reinterpret_cast<T>(dlsym(h, name)); }
 } // namespace
 
 extern "C" {
+
+// Loads a core and returns "name|version|extensions|api" from retro_get_system_info /
+// retro_api_version WITHOUT running retro_init — the P1 smoke test that a core .so is loadable.
+JNIEXPORT jstring JNICALL
+Java_com_retrovault_emulator_LibretroBridge_nativeProbeCore(JNIEnv* env, jobject, jstring corePath) {
+    const char* path = env->GetStringUTFChars(corePath, nullptr);
+    void* handle = dlopen(path, RTLD_NOW | RTLD_LOCAL);
+    env->ReleaseStringUTFChars(corePath, path);
+    if (!handle) { LOGE("probe dlopen failed: %s", dlerror()); return nullptr; }
+
+    auto api_version = sym<unsigned (*)()>(handle, "retro_api_version");
+    auto get_info = sym<void (*)(retro_system_info*)>(handle, "retro_get_system_info");
+    if (!api_version || !get_info) {
+        LOGE("probe: core missing retro_api_version/retro_get_system_info");
+        dlclose(handle);
+        return nullptr;
+    }
+
+    retro_system_info info{};
+    get_info(&info);
+    char buf[512];
+    snprintf(buf, sizeof(buf), "%s|%s|%s|%u",
+             info.library_name ? info.library_name : "?",
+             info.library_version ? info.library_version : "?",
+             info.valid_extensions ? info.valid_extensions : "",
+             api_version());
+    dlclose(handle);
+    return env->NewStringUTF(buf);
+}
 
 JNIEXPORT jboolean JNICALL
 Java_com_retrovault_emulator_LibretroBridge_nativeInit(JNIEnv* env, jobject, jstring corePath) {

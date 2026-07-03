@@ -14,3 +14,6 @@ target_link_libraries(pulsar_retro
     dl          # dlopen the core .so
     EGL
     GLESv3)
+
+# 16 KB page-size compliance (Google Play requirement; default in NDK r28+, kept explicit).
+target_link_options(pulsar_retro PRIVATE "-Wl,-z,max-page-size=16384")

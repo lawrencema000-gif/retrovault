@@ -120,6 +120,7 @@ jobs:
           $CC -O2 -fPIC -shared -Wl,-z,max-page-size=16384 \
             -I "$GLDIR" -I tests/test \
             tests/test/libretro-test.c \
+            -lm \
             -o out/${{ matrix.abi }}/retro_test_libretro_android.so
 
           # GLES2 hw-render test core (validates SET_HW_RENDER / FBO path)
@@ -127,7 +128,7 @@ jobs:
             -I "$GLDIR" -I "$GLDIR/glsym" \
             "$GLDIR/libretro_gl_test.c" \
             "$GLDIR"/glsym/rglgen.c "$GLDIR"/glsym/glsym_es2.c \
-            -lGLESv2 -lEGL -ldl \
+            -lGLESv2 -lEGL -ldl -lm \
             -o out/${{ matrix.abi }}/testgl_libretro_android.so
 
           ls -la out/${{ matrix.abi }}

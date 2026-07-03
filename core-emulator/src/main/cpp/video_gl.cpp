@@ -99,9 +99,20 @@ bool VideoGL::initDisplay() {
     return true;
 }
 
+void VideoGL::notifyContextDestroy() {
+    if (hwEnabled_ && contextResetDone_ && hwCb_.context_destroy) {
+        LOGI("calling hw context_destroy");
+        hwCb_.context_destroy();
+    }
+    hwCb_ = retro_hw_render_callback{};
+    hwEnabled_ = false;
+    contextResetDone_ = false;
+}
+
 void VideoGL::shutdown() {
     if (display_ == EGL_NO_DISPLAY) return;
-    if (hwEnabled_ && hwCb_.context_destroy && contextResetDone_) hwCb_.context_destroy();
+    // context_destroy must have been fired via notifyContextDestroy() BEFORE the core was
+    // dlclosed; by now the callback pointers are cleared.
 
     eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
     if (fboDepthStencil_) glDeleteRenderbuffers(1, &fboDepthStencil_);
@@ -118,9 +129,35 @@ void VideoGL::shutdown() {
     context_ = EGL_NO_CONTEXT;
     windowSurface_ = pbufferSurface_ = EGL_NO_SURFACE;
     if (window_) { ANativeWindow_release(window_); window_ = nullptr; }
+    {
+        // Drop any unconsumed pending window handed over after the loop exited.
+        std::lock_guard<std::mutex> lock(pendingMutex_);
+        if (pendingWindowChanged_ && pendingWindow_) ANativeWindow_release(pendingWindow_);
+        pendingWindow_ = nullptr;
+        pendingWindowChanged_ = false;
+    }
     free(convertScratch_);
     convertScratch_ = nullptr;
     convertScratchSize_ = 0;
+
+    // Reset all GL object ids + frame state so a subsequent session starts clean.
+    fbo_ = fboTexture_ = fboDepthStencil_ = 0;
+    fboW_ = fboH_ = 0;
+    swTexture_ = 0;
+    swTexW_ = swTexH_ = 0;
+    swTexIs565_ = false;
+    program_ = 0;
+    vbo_ = 0;
+    locPos_ = locTex_ = locSampler_ = locFlipY_ = locSwapRB_ = -1;
+    hwEnabled_ = false;
+    hwCb_ = retro_hw_render_callback{};
+    contextResetDone_ = false;
+    haveFrame_ = false;
+    frameIsHw_ = false;
+    frameW_ = frameH_ = 0;
+    pixelFormat_ = RETRO_PIXEL_FORMAT_0RGB1555;
+    lastPresentUs_ = 0;
+    config_ = nullptr;
 }
 
 void VideoGL::setPendingWindow(ANativeWindow* window) {

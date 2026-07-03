@@ -1,6 +1,6 @@
 package com.retrovault.app
 
-import androidx.test.core.app.ActivityScenario
+import android.content.Intent
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.retrovault.emulator.LibretroBridge
@@ -18,24 +18,28 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * `retro_test` exercises the software-framebuffer blit path; `testgl` exercises
  * SET_HW_RENDER (FBO + context_reset + hw present).
+ *
+ * Uses Instrumentation.startActivitySync (explicit in-process launch) rather than
+ * ActivityScenario, which cannot reliably resolve debug-source-set activities.
  */
 @RunWith(AndroidJUnit4::class)
 class RenderTest {
 
     private fun runCore(coreFile: String, minFrames: Long = 120): Pair<Long, Long> {
         assertTrue("native host missing", LibretroBridge.available)
-        val ctx = InstrumentationRegistry.getInstrumentation().targetContext
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val ctx = instrumentation.targetContext
         val core = File(ctx.applicationInfo.nativeLibraryDir, coreFile)
         assertTrue("test core not bundled: ${core.absolutePath}", core.exists())
 
         val systemDir = File(ctx.filesDir, "system").apply { mkdirs() }
         val saveDir = File(ctx.filesDir, "saves-core").apply { mkdirs() }
 
-        val scenario = ActivityScenario.launch(RenderTestActivity::class.java)
+        val intent = Intent(ctx, RenderTestActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val activity = instrumentation.startActivitySync(intent) as RenderTestActivity
         try {
-            var surfaceLatch: CountDownLatch? = null
-            scenario.onActivity { surfaceLatch = it.surfaceReady }
-            assertTrue("surface never came up", surfaceLatch!!.await(8, TimeUnit.SECONDS))
+            assertTrue("surface never came up", activity.surfaceReady.await(8, TimeUnit.SECONDS))
 
             LibretroBridge.nativeStartSession(
                 core.absolutePath, null, systemDir.absolutePath, saveDir.absolutePath
@@ -63,7 +67,8 @@ class RenderTest {
             assertTrue("only $frames frames presented ($coreFile)", frames >= minFrames)
             return frames to avgIntervalUs
         } finally {
-            scenario.close()
+            activity.finish()
+            instrumentation.waitForIdleSync()
         }
     }
 

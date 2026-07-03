@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Debug-only host for instrumented render tests. Lives in the app package (and its
+             main process, unlike EmulatorActivity's :emu) so ActivityScenario can resolve it
+             and tests can drive LibretroBridge + read stats directly. -->
+        <activity
+            android:name=".RenderTestActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
+    </application>
+</manifest>

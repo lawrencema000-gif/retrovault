@@ -419,6 +419,7 @@ Java_com_retrovault_emulator_LibretroBridge_nativeRunLoop(JNIEnv*, jobject) {
     } while (false);
 
     if (!ok) {
+        g_video.notifyContextDestroy(); // while the core (if any) is still loaded
         unloadCoreOnThread();
         g_video.shutdown();
         g_running = false;
@@ -458,6 +459,9 @@ Java_com_retrovault_emulator_LibretroBridge_nativeRunLoop(JNIEnv*, jobject) {
 
     LOGI("run loop exiting: %llu frames presented",
          (unsigned long long)g_video.stats.framesPresented.load());
+    // Teardown order matters: context_destroy fires while the core is still loaded and the
+    // GL context is current; only then unload/dlclose the core; EGL goes down last.
+    g_video.notifyContextDestroy();
     unloadCoreOnThread();
     g_video.shutdown();
     g_running = false;

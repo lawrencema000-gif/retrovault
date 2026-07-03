@@ -42,6 +42,13 @@ public:
     uintptr_t currentFramebuffer() const { return (uintptr_t)fbo_; }
     void callContextResetOnce();                   // fires hw context_reset exactly once
 
+    /**
+     * Fire the core's context_destroy WHILE the core is still loaded and the GL context is
+     * current, then forget the hw callbacks. MUST be called before dlclose(core) — the
+     * callback is a pointer into the core library.
+     */
+    void notifyContextDestroy();
+
     // ---- frame submission (render thread, inside retro_run's video_cb) ----
     void setPixelFormat(retro_pixel_format fmt) { pixelFormat_ = fmt; }
     void setGeometry(unsigned baseW, unsigned baseH, float aspect);

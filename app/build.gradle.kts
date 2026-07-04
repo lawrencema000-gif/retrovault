@@ -59,6 +59,7 @@ dependencies {
     implementation(project(":core-model"))
     implementation(project(":core-ui"))
     implementation(project(":core-emulator"))
+    implementation(project(":core-input"))
     implementation(project(":feature-store"))
     implementation(project(":feature-player"))
 

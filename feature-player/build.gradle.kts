@@ -20,6 +20,7 @@ dependencies {
     implementation(project(":core-model"))
     implementation(project(":core-ui"))
     implementation(project(":core-emulator"))
+    implementation(project(":core-input"))
     implementation(project(":data-saves"))
     implementation(project(":data-download"))
 

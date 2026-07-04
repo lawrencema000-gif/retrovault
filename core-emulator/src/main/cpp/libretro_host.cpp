@@ -86,6 +86,17 @@ std::atomic<int32_t> g_buttons{0};
 std::atomic<int32_t> g_analogLX{0};
 std::atomic<int32_t> g_analogLY{0};
 
+// input->frame latency instrumentation: newest event timestamp not yet sampled by the core
+std::atomic<int64_t> g_lastInputEventNs{0};
+std::atomic<int64_t> g_inputLatencyUsEma{0};
+std::atomic<int64_t> g_inputEventsSampled{0};
+
+int64_t monotonicNowNs() {
+    timespec ts{};
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec;
+}
+
 // ---------------------------------------------------------------------------- callbacks
 
 void core_log(enum retro_log_level level, const char* fmt, ...) {
@@ -220,7 +231,18 @@ void audio_sample_cb(int16_t left, int16_t right) {
     audio_batch_cb(buf, 1);
 }
 
-void input_poll_cb() {}
+void input_poll_cb() {
+    // Latency metric: time from the Android input event to the core sampling it here.
+    int64_t eventNs = g_lastInputEventNs.exchange(0);
+    if (eventNs > 0) {
+        int64_t latencyUs = (monotonicNowNs() - eventNs) / 1000;
+        if (latencyUs >= 0 && latencyUs < 1000000) {
+            int64_t ema = g_inputLatencyUsEma.load();
+            g_inputLatencyUsEma = ema == 0 ? latencyUs : (ema * 7 + latencyUs) / 8;
+            g_inputEventsSampled.fetch_add(1);
+        }
+    }
+}
 
 int16_t input_state_cb(unsigned port, unsigned device, unsigned index, unsigned id) {
     if (port != 0) return 0;
@@ -371,6 +393,9 @@ Java_com_retrovault_emulator_LibretroBridge_nativeStartSession(
     g_buttons = 0;
     g_analogLX = 0;
     g_analogLY = 0;
+    g_lastInputEventNs = 0;
+    g_inputLatencyUsEma = 0;
+    g_inputEventsSampled = 0;
     g_video.stats.framesPresented = 0;
     g_video.stats.framesDuped = 0;
     g_video.stats.avgFrameIntervalUs = 0;
@@ -511,12 +536,29 @@ Java_com_retrovault_emulator_LibretroBridge_nativeIsRunning(JNIEnv*, jobject) {
 }
 
 JNIEXPORT void JNICALL
-Java_com_retrovault_emulator_LibretroBridge_nativeSetInput(JNIEnv*, jobject, jint port, jint buttons, jint lx, jint ly) {
+Java_com_retrovault_emulator_LibretroBridge_nativeSetInput(
+    JNIEnv*, jobject, jint port, jint buttons, jint lx, jint ly, jlong eventTimeNs) {
     if (port == 0) {
         g_buttons = buttons;
         g_analogLX = lx;
         g_analogLY = ly;
+        if (eventTimeNs > 0) g_lastInputEventNs = eventTimeNs;
     }
+}
+
+JNIEXPORT jint JNICALL
+Java_com_retrovault_emulator_LibretroBridge_nativeDebugButtons(JNIEnv*, jobject) {
+    return (jint)g_buttons.load();
+}
+
+JNIEXPORT jlong JNICALL
+Java_com_retrovault_emulator_LibretroBridge_nativeInputLatencyUsEma(JNIEnv*, jobject) {
+    return (jlong)g_inputLatencyUsEma.load();
+}
+
+JNIEXPORT jlong JNICALL
+Java_com_retrovault_emulator_LibretroBridge_nativeInputEventsSampled(JNIEnv*, jobject) {
+    return (jlong)g_inputEventsSampled.load();
 }
 
 JNIEXPORT jlong JNICALL

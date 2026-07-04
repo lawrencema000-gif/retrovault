@@ -3,6 +3,8 @@ package com.retrovault.feature.player
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -13,11 +15,27 @@ import com.retrovault.core.model.GameSystem
 import com.retrovault.core.ui.theme.PulsarTheme
 import com.retrovault.emulator.EmulatorSession
 import com.retrovault.emulator.LibretroBridge
+import com.retrovault.input.GamepadMapper
+import com.retrovault.input.InputHub
 
 /** Full-screen, landscape gameplay host. Runs in the :emu process (see manifest). */
 class EmulatorActivity : ComponentActivity() {
 
     private val session = EmulatorSession()
+    private val inputHub = InputHub()
+    private val gamepad = GamepadMapper(inputHub)
+
+    // External gamepads dispatch through the Activity — captured here even with the
+    // Compose chrome present, then written into the same native snapshot as touch.
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (gamepad.isGamepadEvent(event) && gamepad.onKeyEvent(event)) return true
+        return super.dispatchKeyEvent(event)
+    }
+
+    override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
+        if (gamepad.onMotionEvent(event)) return true
+        return super.dispatchGenericMotionEvent(event)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -47,7 +65,13 @@ class EmulatorActivity : ComponentActivity() {
 
         setContent {
             PulsarTheme {
-                PlayerScreen(title = title, system = system, session = session, onQuit = { finish() })
+                PlayerScreen(
+                    title = title,
+                    system = system,
+                    session = session,
+                    inputHub = inputHub,
+                    onQuit = { finish() },
+                )
             }
         }
     }

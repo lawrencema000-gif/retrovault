@@ -2,7 +2,17 @@
 
 > **✅ All 10 stages' foundations laid and building green.**
 > **📋 Execution now follows [`MASTERPLAN.md`](MASTERPLAN.md) — 27 steps (P1–P27), one per session.**
-> **📍 CURRENT STEP → P4: Input hot path (raw overlay View + atomic input state + basic gamepad)**
+> **📍 CURRENT STEP → P5: First light — PSP homebrew boots end-to-end on device [DEVICE SESSION]**
+>
+> ✅ **P4 done (2026-07-04):** Input hot path live — `:core-input` module with `TouchOverlayView`
+> (raw View over the SurfaceView, `requestUnbufferedDispatch`, full-pointer re-hit-testing →
+> multi-touch + slide-between for free, Canvas-drawn default layout), `GamepadMapper`
+> (Android-standard keycodes + left-stick radial deadzone + HAT d-pad), `InputHub` merging both
+> sources into the native atomic snapshot; Compose fully retired from the input path (chrome
+> only); input→frame latency instrumentation (event timestamp → `retro_input_poll` EMA).
+> InputTest: 4 controls held simultaneously with zero drops + slide-between verified against
+> the native snapshot; gamepad buttons/analog/hat land in the same snapshot — full suite
+> **OK (7 tests)**. Physical-pad validation batched into P5/P9 device sessions.
 >
 > ✅ **P3 done (2026-07-04):** Oboe audio live — LowLatency/Exclusive stream, lock-free SPSC ring,
 > linear resampler with libretro dynamic rate control (±0.5%), half-ring silence prefill,

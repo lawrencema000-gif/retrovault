@@ -47,8 +47,19 @@ object LibretroBridge {
 
     external fun nativeIsRunning(): Boolean
 
-    /** Push the current input state for a port (RetroPad bitmask + left-analog axes). */
-    external fun nativeSetInput(port: Int, buttons: Int, analogLX: Int, analogLY: Int)
+    /**
+     * Push the current input state for a port (RetroPad bitmask + left-analog axes).
+     * [eventTimeNs] = the originating Android input event time (uptime-based, ns) for
+     * input→frame latency instrumentation; pass 0 when not applicable.
+     */
+    external fun nativeSetInput(port: Int, buttons: Int, analogLX: Int, analogLY: Int, eventTimeNs: Long)
+
+    /** Current button bitmask as seen by the core-side snapshot (tests/debug overlay). */
+    external fun nativeDebugButtons(): Int
+
+    /** EMA of input-event → core-sample latency, microseconds. */
+    external fun nativeInputLatencyUsEma(): Long
+    external fun nativeInputEventsSampled(): Long
 
     // ---- video stats (P2 acceptance + future debug overlay) ----
     external fun nativeFramesPresented(): Long

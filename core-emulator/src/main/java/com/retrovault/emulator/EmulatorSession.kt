@@ -69,8 +69,8 @@ class EmulatorSession {
         start(context, "${CoreCatalog.coreLib(system)}.so", gamePath)
 
     /** Push the input snapshot to the core (call after mutating [input]). */
-    fun syncInput() {
-        LibretroBridge.nativeSetInput(0, input.buttons, input.analogLX, input.analogLY)
+    fun syncInput(eventTimeNs: Long = 0L) {
+        LibretroBridge.nativeSetInput(0, input.buttons, input.analogLX, input.analogLY, eventTimeNs)
     }
 
     fun stop() {

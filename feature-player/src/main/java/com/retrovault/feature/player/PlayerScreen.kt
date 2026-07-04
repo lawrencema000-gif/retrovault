@@ -5,8 +5,6 @@ import android.view.SurfaceView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -19,17 +17,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.SportsEsports
@@ -47,7 +40,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -57,10 +49,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.retrovault.core.model.GameSystem
 import com.retrovault.core.ui.coverBrush
 import com.retrovault.core.ui.theme.ChakraPetch
-import com.retrovault.core.ui.theme.PulsarBlueSoft
-import com.retrovault.core.ui.theme.PulsarPink
 import com.retrovault.core.ui.theme.PulsarPrimary
-import com.retrovault.core.ui.theme.PulsarRed
 import com.retrovault.core.ui.theme.PulsarStroke
 import com.retrovault.core.ui.theme.PulsarTeal
 import com.retrovault.core.ui.theme.PulsarText
@@ -72,17 +61,22 @@ import com.retrovault.emulator.CoreStatus
 import com.retrovault.emulator.DeviceCapabilities
 import com.retrovault.emulator.EmulatorSession
 import com.retrovault.emulator.LibretroBridge
-import com.retrovault.emulator.RetroPad
+import com.retrovault.input.InputHub
+import com.retrovault.input.TouchOverlayView
 
-private val Glass = Color(0x9910161F)
 private val HudGlass = Color(0x99080C14)
-private val ControlIcon = Color(0xFF8EA3C8)
 
+/**
+ * Gameplay chrome. The INPUT path is NOT Compose: [TouchOverlayView] (raw View) sits directly
+ * over the SurfaceView and writes the native input snapshot. Compose renders only chrome —
+ * HUD menu button, status chips, quick-menu sheet.
+ */
 @Composable
 fun PlayerScreen(
     title: String,
     system: GameSystem,
     session: EmulatorSession,
+    inputHub: InputHub,
     onQuit: () -> Unit,
 ) {
     var showMenu by remember { mutableStateOf(false) }
@@ -105,7 +99,7 @@ fun PlayerScreen(
             .background(Color.Black)
     ) {
         if (running) {
-            // Emulator viewport: the native host renders into this SurfaceView.
+            // Emulator viewport + the raw-View touch overlay directly above it.
             AndroidView(
                 factory = { context ->
                     SurfaceView(context).apply {
@@ -128,8 +122,15 @@ fun PlayerScreen(
                 },
                 modifier = Modifier.fillMaxSize()
             )
+            AndroidView(
+                factory = { context -> TouchOverlayView(context, inputHub) },
+                modifier = Modifier.fillMaxSize()
+            )
             DisposableEffect(Unit) {
-                onDispose { LibretroBridge.nativeSetVideoSurface(null) }
+                onDispose {
+                    LibretroBridge.nativeSetVideoSurface(null)
+                    inputHub.clear()
+                }
             }
         } else {
             // No running core: branded standby backdrop + status.
@@ -169,7 +170,7 @@ fun PlayerScreen(
             }
         }
 
-        // top HUD
+        // top HUD (chrome only)
         Row(
             Modifier
                 .align(Alignment.TopCenter)
@@ -194,27 +195,6 @@ fun PlayerScreen(
             }
         }
 
-        // shoulder buttons
-        HoldPill("L", session, RetroPad.L, Modifier.align(Alignment.CenterStart).padding(top = 40.dp))
-        HoldPill("R", session, RetroPad.R, Modifier.align(Alignment.CenterEnd).padding(top = 40.dp))
-
-        // bottom controls
-        Row(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 26.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Bottom
-        ) {
-            Dpad(session)
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                HoldPill("SELECT", session, RetroPad.SELECT)
-                HoldPill("START", session, RetroPad.START)
-            }
-            FaceButtons(session)
-        }
-
         if (showMenu) {
             QuickMenu(
                 title = title,
@@ -227,25 +207,6 @@ fun PlayerScreen(
     }
 }
 
-/* ---- input helper ---- */
-
-private fun Modifier.holdable(session: EmulatorSession, mask: Int): Modifier = pointerInput(Unit) {
-    awaitEachGesture {
-        awaitFirstDown(requireUnconsumed = false)
-        session.input.press(mask)
-        session.syncInput()
-        var pressed = true
-        while (pressed) {
-            val event = awaitPointerEvent()
-            pressed = event.changes.any { it.pressed }
-        }
-        session.input.release(mask)
-        session.syncInput()
-    }
-}
-
-/* ---- components ---- */
-
 @Composable
 private fun Chip(text: String, textColor: Color, bg: Color) {
     Box(
@@ -256,66 +217,6 @@ private fun Chip(text: String, textColor: Color, bg: Color) {
             .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
         Text(text, color = textColor, fontFamily = ChakraPetch, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-    }
-}
-
-@Composable
-private fun Dpad(session: EmulatorSession) {
-    Box(Modifier.size(118.dp)) {
-        DpadKey(Icons.Filled.KeyboardArrowUp, session, RetroPad.UP, Modifier.align(Alignment.TopCenter))
-        DpadKey(Icons.Filled.KeyboardArrowDown, session, RetroPad.DOWN, Modifier.align(Alignment.BottomCenter))
-        DpadKey(Icons.AutoMirrored.Filled.KeyboardArrowLeft, session, RetroPad.LEFT, Modifier.align(Alignment.CenterStart))
-        DpadKey(Icons.AutoMirrored.Filled.KeyboardArrowRight, session, RetroPad.RIGHT, Modifier.align(Alignment.CenterEnd))
-    }
-}
-
-@Composable
-private fun DpadKey(icon: ImageVector, session: EmulatorSession, mask: Int, modifier: Modifier) {
-    Box(
-        modifier
-            .size(40.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(Glass)
-            .border(1.dp, PulsarStroke, RoundedCornerShape(12.dp))
-            .holdable(session, mask),
-        contentAlignment = Alignment.Center
-    ) { Icon(icon, null, tint = ControlIcon, modifier = Modifier.size(24.dp)) }
-}
-
-@Composable
-private fun FaceButtons(session: EmulatorSession) {
-    Box(Modifier.size(132.dp)) {
-        FaceKey("△", PulsarTeal, session, RetroPad.X, Modifier.align(Alignment.TopCenter))
-        FaceKey("✕", PulsarBlueSoft, session, RetroPad.B, Modifier.align(Alignment.BottomCenter))
-        FaceKey("□", PulsarPink, session, RetroPad.Y, Modifier.align(Alignment.CenterStart))
-        FaceKey("○", PulsarRed, session, RetroPad.A, Modifier.align(Alignment.CenterEnd))
-    }
-}
-
-@Composable
-private fun FaceKey(symbol: String, color: Color, session: EmulatorSession, mask: Int, modifier: Modifier) {
-    Box(
-        modifier
-            .size(48.dp)
-            .clip(CircleShape)
-            .background(Glass)
-            .border(1.dp, color.copy(alpha = 0.5f), CircleShape)
-            .holdable(session, mask),
-        contentAlignment = Alignment.Center
-    ) { Text(symbol, color = color, fontWeight = FontWeight.Bold, fontSize = 16.sp) }
-}
-
-@Composable
-private fun HoldPill(label: String, session: EmulatorSession, mask: Int, modifier: Modifier = Modifier) {
-    Box(
-        modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(Glass)
-            .border(1.dp, PulsarStroke, RoundedCornerShape(20.dp))
-            .holdable(session, mask)
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-    ) {
-        Text(label, color = ControlIcon, fontFamily = ChakraPetch, fontWeight = FontWeight.Bold, fontSize = 11.sp, letterSpacing = 1.sp)
     }
 }
 

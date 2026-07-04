@@ -86,8 +86,10 @@ fun RetroVaultRoot() {
                 GameDetailScreen(
                     gameId = gameId,
                     onBack = { navController.popBackStack() },
-                    onPlay = { id, title, system ->
-                        context.startActivity(EmulatorActivity.intent(context, id, title, system))
+                    onPlay = { id, title, system, gamePath ->
+                        context.startActivity(
+                            EmulatorActivity.intent(context, id, title, system, gamePath)
+                        )
                     }
                 )
             }

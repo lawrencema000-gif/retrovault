@@ -2,6 +2,7 @@ package com.retrovault.download
 
 import android.content.Context
 import androidx.work.CoroutineWorker
+import androidx.work.Data
 import androidx.work.WorkerParameters
 import com.retrovault.core.model.GameSystem
 import kotlinx.coroutines.Dispatchers
@@ -22,6 +23,7 @@ class GameDownloadWorker(context: Context, params: WorkerParameters) :
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val gameId = inputData.getString(KEY_GAME_ID) ?: return@withContext Result.failure()
+        val slug = inputData.getString(KEY_SLUG) ?: gameId
         val system = inputData.getString(KEY_SYSTEM)
             ?.let { runCatching { GameSystem.valueOf(it) }.getOrNull() }
             ?: return@withContext Result.failure()
@@ -49,7 +51,13 @@ class GameDownloadWorker(context: Context, params: WorkerParameters) :
                 dest.delete()
                 return@withContext Result.failure()
             }
-            Result.success()
+
+            // Install: extract the verified archive and locate the playable file.
+            val playable = GameInstaller.install(applicationContext, system, slug, dest)
+                ?: return@withContext Result.failure()
+            Result.success(
+                Data.Builder().putString(OUT_PLAYABLE_PATH, playable.absolutePath).build()
+            )
         } catch (e: Exception) {
             Result.retry()
         }
@@ -71,6 +79,8 @@ class GameDownloadWorker(context: Context, params: WorkerParameters) :
 
     companion object {
         const val KEY_GAME_ID = "gameId"
+        const val KEY_SLUG = "slug"
         const val KEY_SYSTEM = "system"
+        const val OUT_PLAYABLE_PATH = "playablePath"
     }
 }

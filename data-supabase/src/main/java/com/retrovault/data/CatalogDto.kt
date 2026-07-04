@@ -16,6 +16,7 @@ data class GameDto(
     val description: String? = null,
     val license: String,
     @SerialName("source_url") val sourceUrl: String? = null,
+    @SerialName("storage_provider") val storageProvider: String? = null,
     @SerialName("download_url") val downloadUrl: String? = null,
     @SerialName("download_size_bytes") val downloadSizeBytes: Long = 0,
     @SerialName("box_art_url") val boxArtUrl: String? = null,
@@ -23,6 +24,7 @@ data class GameDto(
 
 fun GameDto.toDomain(): Game = Game(
     id = id,
+    slug = slug,
     title = title,
     system = systemId.toGameSystem(),
     developer = developer ?: "Unknown",
@@ -31,6 +33,7 @@ fun GameDto.toDomain(): Game = Game(
     boxArtUrl = boxArtUrl,
     downloadUrl = downloadUrl,
     sizeBytes = downloadSizeBytes,
+    downloadable = storageProvider != null || downloadUrl != null,
 )
 
 private fun String.toGameSystem(): GameSystem = when (this) {

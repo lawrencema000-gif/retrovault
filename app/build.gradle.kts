@@ -60,6 +60,8 @@ dependencies {
     implementation(project(":core-ui"))
     implementation(project(":core-emulator"))
     implementation(project(":core-input"))
+    implementation(project(":data-supabase"))
+    implementation(project(":data-download"))
     implementation(project(":feature-store"))
     implementation(project(":feature-player"))
 
@@ -80,4 +82,6 @@ dependencies {
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.core)
+    androidTestImplementation(libs.okhttp)
+    androidTestImplementation(libs.kotlinx.coroutines.android)
 }

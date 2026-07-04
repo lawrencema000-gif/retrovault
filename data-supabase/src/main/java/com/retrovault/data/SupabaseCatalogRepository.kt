@@ -29,7 +29,7 @@ object SupabaseCatalogRepository {
     suspend fun fetchGames(): List<Game> = withContext(Dispatchers.IO) {
         val url = "${SupabaseConfig.REST_URL}/games" +
             "?select=id,system_id,title,slug,developer,description,license,source_url," +
-            "download_url,download_size_bytes,box_art_url" +
+            "storage_provider,download_url,download_size_bytes,box_art_url" +
             "&is_published=eq.true&order=system_id.asc,title.asc"
 
         val request = Request.Builder()

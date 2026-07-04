@@ -2,7 +2,16 @@
 
 > **✅ All 10 stages' foundations laid and building green.**
 > **📋 Execution now follows [`MASTERPLAN.md`](MASTERPLAN.md) — 27 steps (P1–P27), one per session.**
-> **📍 CURRENT STEP → P5: First light — PSP homebrew boots end-to-end on device [DEVICE SESSION]**
+> **📍 CURRENT STEP → P5: First light on the user's physical device [DEVICE SESSION — everything is staged]**
+>
+> 🎆 **P5-prep done — FIRST LIGHT ACHIEVED ON EMULATOR (2026-07-04):** the real, license-verified
+> GPL-3.0 homebrew **Battlegrounds 3** (github.com/xfacter/battlegrounds3, mirrored with recorded
+> evidence from the PPSSPP store lead-list) flowed through the ENTIRE production pipeline —
+> live Supabase catalog → `get-download-url` edge fn → download → sha256 → zip-slip-safe unzip
+> install → playable resolution (EBOOT.PBP) → **PPSSPP core booted it and presented 129 frames**.
+> FirstLightTest OK. Store UI now has real Download→Downloading→Play states. PSP placeholders
+> unpublished. Known nit for device polish: ship `ppge_atlas.zim` into the core system dir
+> (PPSSPP OSD/save-dialog font; games run fine without it, dialogs render blank).
 >
 > ✅ **P4 done (2026-07-04):** Input hot path live — `:core-input` module with `TouchOverlayView`
 > (raw View over the SurfaceView, `requestUnbufferedDispatch`, full-pointer re-hit-testing →

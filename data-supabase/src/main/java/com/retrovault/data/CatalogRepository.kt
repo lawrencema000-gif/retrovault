@@ -1,11 +1,11 @@
-package com.retrovault.data
+﻿package com.retrovault.data
 
 import com.retrovault.core.model.Game
 import com.retrovault.core.model.GameSystem
 
 /**
  * Bundled offline fallback catalog. Used when the Supabase fetch fails so the store still renders.
- * Every entry represents a homebrew / public-domain / freely-redistributable game — never a
+ * Every entry represents a homebrew / public-domain / freely-redistributable game â€” never a
  * copyrighted commercial ROM.
  */
 object CatalogRepository {
@@ -13,6 +13,7 @@ object CatalogRepository {
     private val games: List<Game> = listOf(
         Game(
             id = "psp-homebrew-1",
+            slug = "psp-homebrew-1",
             title = "Sample PSP Homebrew",
             system = GameSystem.PSP,
             developer = "Homebrew Community",
@@ -24,6 +25,7 @@ object CatalogRepository {
         ),
         Game(
             id = "ps1-homebrew-1",
+            slug = "ps1-homebrew-1",
             title = "Public Domain Racer",
             system = GameSystem.PS1,
             developer = "PSXDEV Community",
@@ -35,6 +37,7 @@ object CatalogRepository {
         ),
         Game(
             id = "ps2-homebrew-1",
+            slug = "ps2-homebrew-1",
             title = "PS2 Homebrew Demo",
             system = GameSystem.PS2,
             developer = "PS2DEV Community",

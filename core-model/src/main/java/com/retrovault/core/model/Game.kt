@@ -8,6 +8,7 @@ package com.retrovault.core.model
  */
 data class Game(
     val id: String,
+    val slug: String,
     val title: String,
     val system: GameSystem,
     val developer: String,
@@ -16,5 +17,7 @@ data class Game(
     val boxArtUrl: String?,
     val downloadUrl: String?,
     val sizeBytes: Long,
+    /** True when the catalog hosts a legally-redistributable file for this title. */
+    val downloadable: Boolean = false,
     val homebrew: Boolean = true
 )

@@ -20,6 +20,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.HourglassTop
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Memory
@@ -32,7 +34,15 @@ import androidx.compose.material.icons.filled.VideogameAsset
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.delay
+import com.retrovault.download.DownloadManager
+import com.retrovault.download.GameInstaller
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -70,7 +80,7 @@ import com.retrovault.data.SupabaseCatalogRepository
 fun GameDetailScreen(
     gameId: String,
     onBack: () -> Unit,
-    onPlay: (String, String, GameSystem) -> Unit = { _, _, _ -> },
+    onPlay: (String, String, GameSystem, String?) -> Unit = { _, _, _, _ -> },
 ) {
     val game = remember(gameId) {
         SupabaseCatalogRepository.cachedById(gameId) ?: CatalogRepository.byId(gameId)
@@ -81,6 +91,23 @@ fun GameDetailScreen(
             Text("Game not found", color = PulsarTextDim)
         }
         return
+    }
+
+    val context = LocalContext.current
+    var installedPath by remember(gameId) {
+        mutableStateOf(GameInstaller.installedPlayable(context, game.system, game.slug)?.absolutePath)
+    }
+    var downloading by remember(gameId) { mutableStateOf(false) }
+    LaunchedEffect(downloading) {
+        // Poll for install completion while the WorkManager job runs.
+        while (downloading) {
+            delay(700)
+            val p = GameInstaller.installedPlayable(context, game.system, game.slug)
+            if (p != null) {
+                installedPath = p.absolutePath
+                downloading = false
+            }
+        }
     }
 
     val cover = coverBrush(game.id)
@@ -174,29 +201,56 @@ fun GameDetailScreen(
 
             // primary CTA
             Spacer(Modifier.height(22.dp))
+            // CTA state machine: Play (installed) / Downloading / Download (hosted) / Coming soon.
+            val installed = installedPath != null
+            val ctaEnabled = installed || (!downloading && game.downloadable)
+            val ctaLabel = when {
+                installed -> "PLAY"
+                downloading -> "DOWNLOADING…"
+                game.downloadable -> "DOWNLOAD"
+                else -> "COMING SOON"
+            }
+            val ctaIcon = when {
+                installed -> Icons.Filled.PlayArrow
+                downloading -> Icons.Filled.HourglassTop
+                else -> Icons.Filled.Download
+            }
             Box(
                 Modifier
                     .fillMaxWidth()
                     .height(60.dp)
                     .clip(RoundedCornerShape(18.dp))
-                    .background(PulsarAccentBrush)
-                    .clickable { onPlay(game.id, game.title, game.system) },
+                    .then(
+                        if (ctaEnabled) Modifier.background(PulsarAccentBrush)
+                        else Modifier.background(PulsarSurface2).border(1.dp, PulsarStroke, RoundedCornerShape(18.dp))
+                    )
+                    .clickable(enabled = ctaEnabled) {
+                        if (installed) {
+                            onPlay(game.id, game.title, game.system, installedPath)
+                        } else if (game.downloadable) {
+                            DownloadManager.enqueue(
+                                context, game.id, game.slug, game.system,
+                                wifiOnly = false, // P11 settings expose the Wi-Fi-only toggle
+                            )
+                            downloading = true
+                        }
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Icon(
-                        Icons.Filled.PlayArrow,
+                        ctaIcon,
                         contentDescription = null,
-                        tint = PulsarOnAccent,
-                        modifier = Modifier.size(28.dp)
+                        tint = if (ctaEnabled) PulsarOnAccent else PulsarTextFaint,
+                        modifier = Modifier.size(26.dp)
                     )
                     Text(
-                        "PLAY",
+                        ctaLabel,
                         fontFamily = ChakraPetch,
                         fontWeight = FontWeight.Bold,
                         fontSize = 16.sp,
                         letterSpacing = 2.sp,
-                        color = PulsarOnAccent
+                        color = if (ctaEnabled) PulsarOnAccent else PulsarTextFaint
                     )
                 }
             }

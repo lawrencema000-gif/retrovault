@@ -12,9 +12,16 @@ import com.retrovault.core.model.GameSystem
 /** Enqueues resumable game downloads via WorkManager. */
 object DownloadManager {
 
-    fun enqueue(context: Context, gameId: String, system: GameSystem, wifiOnly: Boolean = true) {
+    fun enqueue(
+        context: Context,
+        gameId: String,
+        slug: String,
+        system: GameSystem,
+        wifiOnly: Boolean = true,
+    ) {
         val data = Data.Builder()
             .putString(GameDownloadWorker.KEY_GAME_ID, gameId)
+            .putString(GameDownloadWorker.KEY_SLUG, slug)
             .putString(GameDownloadWorker.KEY_SYSTEM, system.name)
             .build()
 

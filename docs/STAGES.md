@@ -13,6 +13,16 @@
 > unpublished. Known nit for device polish: ship `ppge_atlas.zim` into the core system dir
 > (PPSSPP OSD/save-dialog font; games run fine without it, dialogs render blank).
 >
+> ✅ **P6 done (2026-07-04):** Library identification engine (`:data-library`) — pure-Kotlin
+> PARAM.SFO parser + PBP reader + ISO9660 reader, `GameIdentifier` (canonical serial from
+> DISC_ID / stable fake ID for homebrew, ICON0 art extraction, boot-CRC32), JSON-cached
+> `LibraryIndex` (persist + skip-unchanged rescan), SAF `LibraryScanner`. LibraryIdentifyTest
+> validates serial canonicalization, a synthetic PARAM.SFO/PBP round-trip, homebrew fake-ID,
+> index persistence, and the real Battlegrounds 3 EBOOT — **OK (6 tests)**; full suite **OK
+> (14 tests)**. Deferred: CSO/CHD decompression (native libchdr, added with the core
+> pass-through); SAF-tree scan + ISO9660 unverified without a device/real ISO; wiring imported
+> games into the Library UI grid lands with the installed-games section.
+>
 > ✅ **P4 done (2026-07-04):** Input hot path live — `:core-input` module with `TouchOverlayView`
 > (raw View over the SurfaceView, `requestUnbufferedDispatch`, full-pointer re-hit-testing →
 > multi-touch + slide-between for free, Canvas-drawn default layout), `GamepadMapper`

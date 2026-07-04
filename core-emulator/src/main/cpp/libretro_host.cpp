@@ -27,6 +27,7 @@
 
 #include "libretro.h"
 #include "video_gl.h"
+#include "audio_out.h"
 
 #include "swappy/swappyGL.h"
 
@@ -68,11 +69,13 @@ T sym(void* h, const char* name) { return reinterpret_cast<T>(dlsym(h, name)); }
 
 Core g_core;
 VideoGL g_video;
+AudioOut g_audio;
 
 std::string g_corePath, g_gamePath, g_systemDir, g_saveDir;
 bool g_supportsNoGame = false;
 double g_coreFps = 60.0;
 uint64_t g_audioFrames = 0;
+int g_audioSourceRate = 0;
 
 std::atomic<bool> g_running{false};
 std::atomic<bool> g_stopRequested{false};
@@ -206,8 +209,9 @@ void video_cb(const void* data, unsigned width, unsigned height, size_t pitch) {
     }
 }
 
-size_t audio_batch_cb(const int16_t* /*data*/, size_t frames) {
-    g_audioFrames += frames; // Oboe output lands in P3
+size_t audio_batch_cb(const int16_t* data, size_t frames) {
+    g_audioFrames += frames;
+    if (data && frames) g_audio.writeFrames(data, frames);
     return frames;
 }
 
@@ -363,6 +367,7 @@ Java_com_retrovault_emulator_LibretroBridge_nativeStartSession(
     g_supportsNoGame = false;
     g_coreFps = 60.0;
     g_audioFrames = 0;
+    g_audioSourceRate = 0;
     g_buttons = 0;
     g_analogLX = 0;
     g_analogLY = 0;
@@ -409,8 +414,13 @@ Java_com_retrovault_emulator_LibretroBridge_nativeRunLoop(JNIEnv*, jobject) {
             g_video.setGeometry(av.geometry.base_width, av.geometry.base_height,
                                 av.geometry.aspect_ratio);
             if (av.timing.fps > 0) g_coreFps = av.timing.fps;
-            LOGI("av_info: %ux%u aspect=%.3f fps=%.2f", av.geometry.base_width,
-                 av.geometry.base_height, av.geometry.aspect_ratio, av.timing.fps);
+            LOGI("av_info: %ux%u aspect=%.3f fps=%.2f audio=%.0fHz", av.geometry.base_width,
+                 av.geometry.base_height, av.geometry.aspect_ratio, av.timing.fps,
+                 av.timing.sample_rate);
+            // Audio starts LAZILY once the video pipeline is warm (see run loop) — starting
+            // the audio clock while early frames are still slow drains the ring beyond what
+            // ±0.5% rate control can recover from.
+            g_audioSourceRate = (int)av.timing.sample_rate;
         }
         if (g_core.retro_set_controller_port_device) {
             g_core.retro_set_controller_port_device(0, RETRO_DEVICE_JOYPAD);
@@ -419,6 +429,7 @@ Java_com_retrovault_emulator_LibretroBridge_nativeRunLoop(JNIEnv*, jobject) {
     } while (false);
 
     if (!ok) {
+        g_audio.stop();
         g_video.notifyContextDestroy(); // while the core (if any) is still loaded
         unloadCoreOnThread();
         g_video.shutdown();
@@ -431,19 +442,37 @@ Java_com_retrovault_emulator_LibretroBridge_nativeRunLoop(JNIEnv*, jobject) {
     auto nextFrame = std::chrono::steady_clock::now();
     LOGI("entering run loop (fps=%.2f, swappy=%d)", g_coreFps, (int)g_swappyEnabled.load());
 
+    // Audio starts after this many presented frames — lets JIT/driver warmup pass so the
+    // producer cadence is stable before the audio clock starts consuming.
+    constexpr uint64_t kAudioWarmupFrames = 15;
+    uint64_t resumeFrameMark = 0;
+
     while (!g_stopRequested.load()) {
         g_video.applyPendingWindow();
 
         if (!g_video.hasWindowSurface()) {
-            // Backgrounded: keep the core alive but paused; don't burn CPU.
+            // Backgrounded: keep the core alive but paused; silence audio; don't burn CPU.
+            if (g_audio.isRunning()) {
+                g_audio.stop();
+                resumeFrameMark = g_video.stats.framesPresented.load();
+            }
             std::this_thread::sleep_for(std::chrono::milliseconds(15));
             nextFrame = std::chrono::steady_clock::now();
             continue;
         }
+        if (g_audio.needsRestart()) {
+            g_audio.restart(); // output device changed (headphones/BT)
+        }
 
         g_video.callContextResetOnce();
+        g_audio.updateRateControl();
         g_core.retro_run();
         g_video.present();
+
+        if (!g_audio.isRunning() && g_audioSourceRate > 0 &&
+            g_video.stats.framesPresented.load() >= resumeFrameMark + kAudioWarmupFrames) {
+            g_audio.start(g_audioSourceRate);
+        }
 
         if (!g_swappyEnabled.load()) {
             // Manual pacing fallback: sleep out the remainder of the frame budget.
@@ -459,8 +488,10 @@ Java_com_retrovault_emulator_LibretroBridge_nativeRunLoop(JNIEnv*, jobject) {
 
     LOGI("run loop exiting: %llu frames presented",
          (unsigned long long)g_video.stats.framesPresented.load());
-    // Teardown order matters: context_destroy fires while the core is still loaded and the
-    // GL context is current; only then unload/dlclose the core; EGL goes down last.
+    // Teardown order matters: audio stops first (its producer is the core thread), then
+    // context_destroy fires while the core is still loaded and the GL context is current;
+    // only then unload/dlclose the core; EGL goes down last.
+    g_audio.stop();
     g_video.notifyContextDestroy();
     unloadCoreOnThread();
     g_video.shutdown();
@@ -501,6 +532,39 @@ Java_com_retrovault_emulator_LibretroBridge_nativeAvgFrameIntervalUs(JNIEnv*, jo
 JNIEXPORT jboolean JNICALL
 Java_com_retrovault_emulator_LibretroBridge_nativeSwappyActive(JNIEnv*, jobject) {
     return g_video.stats.swappyActive.load() ? JNI_TRUE : JNI_FALSE;
+}
+
+// ---- audio stats / config ----
+
+JNIEXPORT jlong JNICALL
+Java_com_retrovault_emulator_LibretroBridge_nativeAudioFramesOut(JNIEnv*, jobject) {
+    return (jlong)g_audio.framesConsumed();
+}
+
+JNIEXPORT jlong JNICALL
+Java_com_retrovault_emulator_LibretroBridge_nativeAudioUnderruns(JNIEnv*, jobject) {
+    return (jlong)g_audio.underrunFills();
+}
+
+JNIEXPORT jint JNICALL
+Java_com_retrovault_emulator_LibretroBridge_nativeAudioFillPct(JNIEnv*, jobject) {
+    return (jint)(g_audio.fillRatio() * 100.0);
+}
+
+// rate-control deviation ×1e6 (e.g. +3000 = producing 0.3% extra frames)
+JNIEXPORT jint JNICALL
+Java_com_retrovault_emulator_LibretroBridge_nativeAudioRateDeltaPpm(JNIEnv*, jobject) {
+    return (jint)(g_audio.rateDelta() * 1e6);
+}
+
+JNIEXPORT jint JNICALL
+Java_com_retrovault_emulator_LibretroBridge_nativeAudioDeviceRate(JNIEnv*, jobject) {
+    return (jint)g_audio.deviceSampleRate();
+}
+
+JNIEXPORT void JNICALL
+Java_com_retrovault_emulator_LibretroBridge_nativeSetBtFriendlyAudio(JNIEnv*, jobject, jboolean bt) {
+    g_audio.setBluetoothFriendly(bt == JNI_TRUE);
 }
 
 JNIEXPORT jint JNICALL

@@ -15,6 +15,7 @@ testExtJunit = "1.2.1"
 testRunner = "1.6.2"
 testCore = "1.6.1"
 gamesFramePacing = "2.1.2"
+oboe = "1.9.3"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -38,6 +39,7 @@ androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version
 androidx-test-runner = { group = "androidx.test", name = "runner", version.ref = "testRunner" }
 androidx-test-core = { group = "androidx.test", name = "core", version.ref = "testCore" }
 games-frame-pacing = { group = "androidx.games", name = "games-frame-pacing", version.ref = "gamesFramePacing" }
+oboe = { group = "com.google.oboe", name = "oboe", version.ref = "oboe" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

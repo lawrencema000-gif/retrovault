@@ -2,7 +2,15 @@
 
 > **✅ All 10 stages' foundations laid and building green.**
 > **📋 Execution now follows [`MASTERPLAN.md`](MASTERPLAN.md) — 27 steps (P1–P27), one per session.**
-> **📍 CURRENT STEP → P3: Audio path (Oboe + dynamic rate control)**
+> **📍 CURRENT STEP → P4: Input hot path (raw overlay View + atomic input state + basic gamepad)**
+>
+> ✅ **P3 done (2026-07-04):** Oboe audio live — LowLatency/Exclusive stream, lock-free SPSC ring,
+> linear resampler with libretro dynamic rate control (±0.5%), half-ring silence prefill,
+> video-warmup-gated audio start (15 frames), background pause/resume, BT-friendly buffer toggle
+> (verified: ring 16384→32768), device-change restart hook. AudioTest on emulator: 0 underrun
+> fills over a 20 s window, DRC always inside the cap, fill in band — **OK (1 test)**; full suite
+> (probe+render+audio) **OK (5 tests)**. Deferred to P5 device session: 10-min LowLatency soak,
+> real BT route, live device-change swap.
 >
 > ✅ **P1 done (2026-07-04):** NDK r28.2 live; `ppsspp_libretro` v1.20.4 built from pinned source
 > in CI (both ABIs, 16KB readelf gate green); cores fetched+stripped via `scripts/fetch-cores.ps1`;

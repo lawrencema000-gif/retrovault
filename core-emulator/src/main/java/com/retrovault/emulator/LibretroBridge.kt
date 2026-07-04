@@ -55,6 +55,16 @@ object LibretroBridge {
     external fun nativeAvgFrameIntervalUs(): Long
     external fun nativeSwappyActive(): Boolean
 
+    // ---- audio stats / config (P3) ----
+    external fun nativeAudioFramesOut(): Long
+    external fun nativeAudioUnderruns(): Long
+    external fun nativeAudioFillPct(): Int
+    /** Dynamic-rate-control deviation ×1e6 (±5000 = the ±0.5% cap). */
+    external fun nativeAudioRateDeltaPpm(): Int
+    external fun nativeAudioDeviceRate(): Int
+    /** Larger audio buffering for Bluetooth routes (applies on next stream start). */
+    external fun nativeSetBtFriendlyAudio(bt: Boolean)
+
     // ---- save states (functional from P10) ----
     external fun nativeSerializeSize(): Int
     external fun nativeSerialize(): ByteArray?

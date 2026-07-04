@@ -46,4 +46,5 @@ android {
 dependencies {
     implementation(project(":core-model"))
     implementation(libs.games.frame.pacing)
+    implementation(libs.oboe)
 }

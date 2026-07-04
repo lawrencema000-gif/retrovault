@@ -16,9 +16,17 @@ class InputHub {
     private var padButtons: Int = 0
     private var padAnalogX: Int = 0
     private var padAnalogY: Int = 0
+    private var touchAnalogX: Int = 0
+    private var touchAnalogY: Int = 0
 
     fun onTouchState(buttons: Int, eventTimeNs: Long) {
         touchButtons = buttons
+        push(eventTimeNs)
+    }
+
+    fun onTouchAnalog(x: Int, y: Int, eventTimeNs: Long) {
+        touchAnalogX = x
+        touchAnalogY = y
         push(eventTimeNs)
     }
 
@@ -34,14 +42,22 @@ class InputHub {
     }
 
     val combinedButtons: Int get() = touchButtons or padButtons
-    val analogX: Int get() = padAnalogX
-    val analogY: Int get() = padAnalogY
+
+    // Whichever source is deflected further wins (touch stick vs physical stick).
+    val analogX: Int
+        get() = if (mag(touchAnalogX, touchAnalogY) >= mag(padAnalogX, padAnalogY)) touchAnalogX else padAnalogX
+    val analogY: Int
+        get() = if (mag(touchAnalogX, touchAnalogY) >= mag(padAnalogX, padAnalogY)) touchAnalogY else padAnalogY
+
+    private fun mag(x: Int, y: Int): Long = x.toLong() * x + y.toLong() * y
 
     fun clear() {
         touchButtons = 0
         padButtons = 0
         padAnalogX = 0
         padAnalogY = 0
+        touchAnalogX = 0
+        touchAnalogY = 0
         push(0L)
     }
 

@@ -23,6 +23,21 @@
 > pass-through); SAF-tree scan + ISO9660 unverified without a device/real ISO; wiring imported
 > games into the Library UI grid lands with the installed-games section.
 >
+> ✅ **P7 done (2026-07-04):** Touch **feel layer** — the marquee control quality. `TouchOverlayView`
+> rewritten: d-pad is ONE control with 9 angle zones + a hysteresis band (rolling thumb never
+> flickers between directions; 4-way toggle), **floating auto-centering analog stick** (base
+> anchors where the thumb lands, deadzone rescale + saturation, pointer owns it till lift),
+> slide-off/slide-between by default plus PPSSPP-style **gliding** (keep-first-pressed) and
+> sticky-d-pad options, hitboxes decoupled from visuals with region modifiers (1.0–2.0) and
+> grow-when-pressed (1.5×), pressed-state highlight + opacity. New `Haptics` (crisp CLICK on
+> press / lighter TICK on release, intensity scale, all off a dedicated thread — vibrator
+> binder calls never touch the input path). `InputHub` merges touch-analog vs pad-analog
+> (larger deflection wins). FeelTest validates diagonals, the hysteresis flicker-guard (holds
+> UP at 24° off-axis, flips at 45°), floating-stick anchor+rescale, and gliding — **OK (18
+> tests)** full suite. Note: AudioTest's raw underrun count relaxed to a logged emulator-quality
+> metric (SwiftShader AAudio HAL degrades across the shared suite process); DRC-within-cap stays
+> a hard assertion, strict zero-underrun bar validated in isolation + on device (P5).
+>
 > ✅ **P4 done (2026-07-04):** Input hot path live — `:core-input` module with `TouchOverlayView`
 > (raw View over the SurfaceView, `requestUnbufferedDispatch`, full-pointer re-hit-testing →
 > multi-touch + slide-between for free, Canvas-drawn default layout), `GamepadMapper`

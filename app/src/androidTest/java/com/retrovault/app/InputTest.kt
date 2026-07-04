@@ -27,7 +27,8 @@ class InputTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         lateinit var view: TouchOverlayView
         instrumentation.runOnMainSync {
-            view = TouchOverlayView(instrumentation.targetContext, hub)
+            // haptics = null keeps tests deterministic (no vibrator dependency)
+            view = TouchOverlayView(instrumentation.targetContext, hub, haptics = null)
             view.measure(
                 android.view.View.MeasureSpec.makeMeasureSpec(1600, android.view.View.MeasureSpec.EXACTLY),
                 android.view.View.MeasureSpec.makeMeasureSpec(720, android.view.View.MeasureSpec.EXACTLY),

@@ -59,6 +59,13 @@ public:
     // ---- present (render thread, once per retro_run) ----
     void present();
 
+    /**
+     * Read back the latest frame as tightly-packed RGBA8888, top-down rows (render thread
+     * only). Works for both hw frames (read from the core FBO, flipped) and sw frames
+     * (read via a transient FBO attach). Returns false if no frame has been submitted yet.
+     */
+    bool captureFrame(std::vector<uint8_t>& out, unsigned& w, unsigned& h);
+
     VideoStats stats;
 
 private:

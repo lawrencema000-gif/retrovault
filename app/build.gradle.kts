@@ -63,6 +63,7 @@ dependencies {
     implementation(project(":data-supabase"))
     implementation(project(":data-download"))
     implementation(project(":data-library"))
+    implementation(project(":data-saves"))
     implementation(project(":feature-store"))
     implementation(project(":feature-player"))
 

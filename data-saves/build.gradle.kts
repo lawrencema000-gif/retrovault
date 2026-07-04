@@ -17,6 +17,7 @@ android {
 
 dependencies {
     implementation(project(":core-model"))
+    implementation(project(":core-emulator"))
     implementation(project(":data-supabase"))
 
     implementation(libs.okhttp)

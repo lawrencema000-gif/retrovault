@@ -13,10 +13,13 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.retrovault.core.model.GameSystem
 import com.retrovault.core.ui.theme.PulsarTheme
+import com.retrovault.emulator.CoreStatus
 import com.retrovault.emulator.EmulatorSession
 import com.retrovault.emulator.LibretroBridge
 import com.retrovault.input.GamepadMapper
 import com.retrovault.input.InputHub
+import com.retrovault.saves.SaveStateManager
+import kotlinx.coroutines.runBlocking
 
 /** Full-screen, landscape gameplay host. Runs in the :emu process (see manifest). */
 class EmulatorActivity : ComponentActivity() {
@@ -24,6 +27,7 @@ class EmulatorActivity : ComponentActivity() {
     private val session = EmulatorSession()
     private val inputHub = InputHub()
     private val gamepad = GamepadMapper(inputHub)
+    private var saveStates: SaveStateManager? = null
 
     // External gamepads dispatch through the Activity — captured here even with the
     // Compose chrome present, then written into the same native snapshot as touch.
@@ -63,6 +67,13 @@ class EmulatorActivity : ComponentActivity() {
             session.start(this, system, gamePath)
         }
 
+        // Slot manager keyed by game id (falls back to file name for imported games).
+        val gameKey = intent.getStringExtra(EXTRA_GAME_ID)
+            ?: gamePath?.substringAfterLast('/')?.substringBeforeLast('.')
+        if (gameKey != null && gamePath != null) {
+            saveStates = SaveStateManager(applicationContext, gameKey)
+        }
+
         setContent {
             PulsarTheme {
                 PlayerScreen(
@@ -77,6 +88,13 @@ class EmulatorActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        // Auto-save before teardown: the run loop is still alive (backgrounded branch
+        // executes state ops even with the Surface detached). Blocking is intentional —
+        // the state must hit disk before the process can be killed.
+        val mgr = saveStates
+        if (mgr != null && session.status == CoreStatus.RUNNING) {
+            runBlocking { runCatching { mgr.save(SaveStateManager.AUTO_SLOT) } }
+        }
         session.stop()
         super.onDestroy()
     }

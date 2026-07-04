@@ -23,6 +23,25 @@
 > pass-through); SAF-tree scan + ISO9660 unverified without a device/real ISO; wiring imported
 > games into the Library UI grid lands with the installed-games section.
 >
+> ✅ **P8 done (2026-07-05) — + a MAJOR latent bug fixed:** Save states. Native `retro_serialize`/
+> `unserialize` ops are **posted from any thread but executed on the run-loop thread between
+> frames** (the only thread safe for PPSSPP's GL state), caller blocks on a condvar (20s cap);
+> atomic tmp+rename writes; framebuffer capture via FBO readback → Kotlin PNG thumbnails;
+> `SaveStateManager` (numbered slots + slot-0 auto-save, on `SaveStore`); auto-save-on-exit in
+> `EmulatorActivity.onDestroy` (works after the Surface detaches — the backgrounded loop branch
+> services ops). **🐛 FIX: PSP games were rendering PURE BLACK since "first light" (which only
+> counted frames, never checked pixels).** Root cause: PPSSPP reports `av_info 0×0` and passes
+> `0×0` in the frame callback, so we fell back to 320×240 and the `uFlipY` shader flip sampled
+> the EMPTY TOP of the oversized 4096² hw-FBO instead of the bottom-left sub-rect where PPSSPP
+> renders (bottom-left origin). Fix: (1) core-option `ppsspp_internal_resolution=480x272` (+
+> `ppsspp_cpu_core=IR JIT` for nested-emu safety) so PPSSPP reports real geometry; (2) sub-rect
+> sampling with vertical orientation **baked into the quad UVs** honoring `bottom_left_origin`,
+> uFlipY retired. **Battlegrounds 3 now visibly renders — boot splash + menu confirmed by
+> screenshot.** Also bundled PPSSPP `ppge_atlas.zim` (GPL-2.0) so sceUtility dialogs draw
+> (`CoreAssets` extracts it into the system dir). SaveStateTest boots the real game, saves slot
+> mid-session, asserts a decodable **non-black** thumbnail (varied-pixel + size guard against
+> render regression), loads it back, auto-saves — **OK**; full suite **OK (19 tests)**.
+>
 > ✅ **P7 done (2026-07-04):** Touch **feel layer** — the marquee control quality. `TouchOverlayView`
 > rewritten: d-pad is ONE control with 9 angle zones + a hysteresis band (rolling thumb never
 > flickers between directions; 4-way toggle), **floating auto-centering analog stick** (base

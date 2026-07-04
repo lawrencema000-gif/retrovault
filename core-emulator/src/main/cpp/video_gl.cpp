@@ -4,9 +4,11 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <vector>
 
 #define LOG_TAG "pulsar_video"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
+#define LOGW(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
 namespace {
@@ -96,6 +98,66 @@ bool VideoGL::initDisplay() {
         return false;
     }
     LOGI("EGL ES3 context up: %s / %s", glGetString(GL_RENDERER), glGetString(GL_VERSION));
+    return true;
+}
+
+bool VideoGL::captureFrame(std::vector<uint8_t>& out, unsigned& w, unsigned& h) {
+    if (!haveFrame_ || frameW_ == 0 || frameH_ == 0) {
+        LOGW("captureFrame: no frame yet (presented=%llu duped=%llu hw=%d)",
+             (unsigned long long)stats.framesPresented.load(),
+             (unsigned long long)stats.framesDuped.load(), (int)frameIsHw_);
+        return false;
+    }
+    GLuint srcTex = frameIsHw_ ? fboTexture_ : swTexture_;
+    if (!srcTex) {
+        LOGW("captureFrame: no source texture (hw=%d)", (int)frameIsHw_);
+        return false;
+    }
+
+    w = frameW_;
+    h = frameH_;
+    out.resize((size_t)w * h * 4);
+
+    // GL error flags are sticky — drain anything the core left behind so the check below
+    // reflects OUR readback, not its rendering.
+    while (glGetError() != GL_NO_ERROR) {}
+
+    // Read through a transient FBO so both paths (core FBO texture / sw upload texture)
+    // use the same glReadPixels; ES3 guarantees GL_RGBA+GL_UNSIGNED_BYTE readback for
+    // normalized color attachments.
+    GLint prevFbo = 0;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &prevFbo);
+    GLuint readFbo = 0;
+    glGenFramebuffers(1, &readFbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, readFbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, srcTex, 0);
+    GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    bool ok = status == GL_FRAMEBUFFER_COMPLETE;
+    if (!ok) {
+        LOGW("captureFrame: transient FBO incomplete (0x%x)", status);
+    } else {
+        glPixelStorei(GL_PACK_ALIGNMENT, 1);
+        glReadPixels(0, 0, (GLsizei)w, (GLsizei)h, GL_RGBA, GL_UNSIGNED_BYTE, out.data());
+        GLenum err = glGetError();
+        ok = err == GL_NO_ERROR;
+        if (!ok) LOGW("captureFrame: glReadPixels error 0x%x (%ux%u)", err, w, h);
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)prevFbo);
+    glDeleteFramebuffers(1, &readFbo);
+    if (!ok) return false;
+
+    if (frameIsHw_) {
+        // hw frames are GL bottom-up — flip rows so the dump is top-down.
+        const size_t stride = (size_t)w * 4;
+        std::vector<uint8_t> rowTmp(stride);
+        for (unsigned y = 0; y < h / 2; y++) {
+            uint8_t* a = out.data() + (size_t)y * stride;
+            uint8_t* b = out.data() + (size_t)(h - 1 - y) * stride;
+            memcpy(rowTmp.data(), a, stride);
+            memcpy(a, b, stride);
+            memcpy(b, rowTmp.data(), stride);
+        }
+    }
     return true;
 }
 
@@ -259,7 +321,8 @@ bool VideoGL::enableHwRender(retro_hw_render_callback* cb, unsigned maxWidth, un
         LOGE("hw-render FBO incomplete: 0x%x", status);
         return false;
     }
-    LOGI("hw-render FBO ready: %ux%u (depth=%d stencil=%d)", fboW_, fboH_, cb->depth, cb->stencil);
+    LOGI("hw-render FBO ready: %ux%u (depth=%d stencil=%d bottom_left_origin=%d)",
+         fboW_, fboH_, cb->depth, cb->stencil, (int)cb->bottom_left_origin);
     return true;
 }
 
@@ -286,8 +349,11 @@ void VideoGL::submitSoftwareFrame(const void* data, unsigned width, unsigned hei
 }
 
 void VideoGL::markHwFrame(unsigned width, unsigned height) {
-    frameW_ = width;
-    frameH_ = height;
+    // Some cores (PPSSPP) submit RETRO_HW_FRAME_BUFFER_VALID with 0×0 dims — fall back to
+    // the core-reported base geometry (the rendered sub-rect of our FBO). Without this the
+    // UV sub-rect math degenerates to zero and the screen stays black.
+    frameW_ = width ? width : baseW_;
+    frameH_ = height ? height : baseH_;
     frameIsHw_ = true;
     haveFrame_ = true;
 }
@@ -415,44 +481,45 @@ void VideoGL::drawFrame() {
     glUseProgram(program_);
     glActiveTexture(GL_TEXTURE0);
 
-    float flipY, swapRB;
+    // The core renders its frame into a sub-rectangle [0,u]×[0,vSpan] of a possibly-oversized
+    // texture (the hw FBO is sized to a max; PPSSPP reports its true size via geometry, and
+    // passes 0×0 in the frame callback so frameW_/frameH_ come from that geometry). We bake
+    // the vertical orientation straight into the quad's V coords — NOT via the uFlipY uniform,
+    // which would flip across the FULL texture and land on the empty top of an oversized FBO.
+    float u, vSpan, swapRB;
+    bool bottomLeftOrigin;
     if (frameIsHw_) {
         glBindTexture(GL_TEXTURE_2D, fboTexture_);
-        // GL FBO content is bottom-left origin; base quad UVs already flip (v: 1 at bottom).
-        flipY = hwCb_.bottom_left_origin ? 1.0f : 0.0f;
         swapRB = 0.0f;
+        u = fboW_ ? (float)frameW_ / (float)fboW_ : 1.0f;
+        vSpan = fboH_ ? (float)frameH_ / (float)fboH_ : 1.0f;
+        bottomLeftOrigin = hwCb_.bottom_left_origin; // GL FBO: row 0 is the image bottom
     } else {
         glBindTexture(GL_TEXTURE_2D, swTexture_);
-        flipY = 0.0f;
         // libretro XRGB8888 memory order is B,G,R,X — swizzle in the shader.
         swapRB = swTexIs565_ ? 0.0f : 1.0f;
+        u = 1.0f;
+        vSpan = 1.0f;
+        bottomLeftOrigin = false; // software frames are top-left origin
     }
+    if (u <= 0.0f) u = 1.0f;
+    if (vSpan <= 0.0f) vSpan = 1.0f;
 
-    // For hw frames the core may render into a sub-rect of the FBO — adjust UVs.
-    if (frameIsHw_ && (frameW_ != fboW_ || frameH_ != fboH_)) {
-        float u = fboW_ ? (float)frameW_ / (float)fboW_ : 1.0f;
-        float v = fboH_ ? (float)frameH_ / (float)fboH_ : 1.0f;
-        const float verts[] = {
-            -1.f, -1.f, 0.f, v,
-             1.f, -1.f, u,   v,
-            -1.f,  1.f, 0.f, 0.f,
-             1.f,  1.f, u,   0.f,
-        };
-        glBindBuffer(GL_ARRAY_BUFFER, vbo_);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_DYNAMIC_DRAW);
-    } else {
-        const float verts[] = {
-            -1.f, -1.f, 0.f, 1.f,
-             1.f, -1.f, 1.f, 1.f,
-            -1.f,  1.f, 0.f, 0.f,
-             1.f,  1.f, 1.f, 0.f,
-        };
-        glBindBuffer(GL_ARRAY_BUFFER, vbo_);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_DYNAMIC_DRAW);
-    }
+    // Screen-bottom / screen-top sample rows: for bottom-left origin the image bottom is at
+    // V=0 and its top at V=vSpan; for top-left origin it is reversed.
+    const float vBottom = bottomLeftOrigin ? 0.0f : vSpan;
+    const float vTop = bottomLeftOrigin ? vSpan : 0.0f;
+    const float verts[] = {
+        -1.f, -1.f, 0.f, vBottom,
+         1.f, -1.f, u,   vBottom,
+        -1.f,  1.f, 0.f, vTop,
+         1.f,  1.f, u,   vTop,
+    };
+    glBindBuffer(GL_ARRAY_BUFFER, vbo_);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_DYNAMIC_DRAW);
 
     glUniform1i(locSampler_, 0);
-    glUniform1f(locFlipY_, flipY);
+    glUniform1f(locFlipY_, 0.0f); // orientation baked into the vertex UVs above
     glUniform1f(locSwapRB_, swapRB);
     glEnableVertexAttribArray((GLuint)locPos_);
     glEnableVertexAttribArray((GLuint)locTex_);

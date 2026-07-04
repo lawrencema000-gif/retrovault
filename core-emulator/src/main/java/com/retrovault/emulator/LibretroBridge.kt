@@ -76,8 +76,17 @@ object LibretroBridge {
     /** Larger audio buffering for Bluetooth routes (applies on next stream start). */
     external fun nativeSetBtFriendlyAudio(bt: Boolean)
 
-    // ---- save states (functional from P10) ----
-    external fun nativeSerializeSize(): Int
-    external fun nativeSerialize(): ByteArray?
-    external fun nativeUnserialize(data: ByteArray): Boolean
+    // ---- save states (P8) ----
+
+    /**
+     * Serialize the full core state to [statePath] (written atomically: tmp + rename), and —
+     * if [rawFramePath] is non-null — dump the last presented frame as raw RGBA (int32 w,
+     * int32 h, top-down rows) for thumbnail generation. Callable from any thread: the op is
+     * executed by the run-loop thread between frames; this call blocks until it completes.
+     * Returns false if no session is running or the core failed to serialize.
+     */
+    external fun nativeSaveState(statePath: String, rawFramePath: String?): Boolean
+
+    /** Counterpart to [nativeSaveState]: retro_unserialize [statePath] on the run-loop thread. */
+    external fun nativeLoadState(statePath: String): Boolean
 }

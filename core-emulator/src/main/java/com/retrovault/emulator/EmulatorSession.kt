@@ -54,6 +54,7 @@ class EmulatorSession {
             .apply { mkdirs() }
         val saveDir = File(context.getExternalFilesDir(null) ?: context.filesDir, "saves-core")
             .apply { mkdirs() }
+        CoreAssets.ensureExtracted(context, systemDir)
 
         LibretroBridge.nativeStartSession(
             corePath.absolutePath, gamePath, systemDir.absolutePath, saveDir.absolutePath
@@ -72,6 +73,13 @@ class EmulatorSession {
     fun syncInput(eventTimeNs: Long = 0L) {
         LibretroBridge.nativeSetInput(0, input.buttons, input.analogLX, input.analogLY, eventTimeNs)
     }
+
+    /** Blocking save/load of full core state (executed on the run-loop thread; see bridge). */
+    fun saveState(statePath: String, rawFramePath: String? = null): Boolean =
+        status == CoreStatus.RUNNING && LibretroBridge.nativeSaveState(statePath, rawFramePath)
+
+    fun loadState(statePath: String): Boolean =
+        status == CoreStatus.RUNNING && LibretroBridge.nativeLoadState(statePath)
 
     fun stop() {
         if (status == CoreStatus.RUNNING || LibretroBridge.nativeIsRunning()) {

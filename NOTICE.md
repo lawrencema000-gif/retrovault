@@ -21,6 +21,12 @@ work is distributed under GPLv3 with changes stated in the git history of this r
 | Oboe | com.google.oboe:oboe | Apache-2.0 | Low-latency audio output (`audio_out.cpp`) |
 | libretro test cores | https://github.com/libretro/libretro-samples @ `bce193bc` | MIT-style sample code | CI-built validation cores (never shipped to users) |
 
+## Bundled runtime assets
+
+| Asset | Source | License | Where |
+| --- | --- | --- | --- |
+| PPSSPP `ppge_atlas.zim` | https://github.com/hrydgard/ppsspp `v1.20.4` (`assets/ppge_atlas.zim`) | GPL-2.0-or-later | `app/…/assets/coresystem/PPSSPP/`; extracted into the core system dir at session start (`CoreAssets.kt`) — the HLE OSD/dialog font atlas required for sceUtility dialogs to render |
+
 ## Data and assets (planned per MASTERPLAN.md; entries added when shipped)
 
 - PPSSPP `assets/compat.ini` (GPL-2.0-or-later) — per-game compatibility flags (P12)

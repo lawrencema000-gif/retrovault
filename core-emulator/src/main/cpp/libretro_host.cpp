@@ -17,10 +17,12 @@
 #include <android/native_window_jni.h>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -91,6 +93,28 @@ std::atomic<int64_t> g_lastInputEventNs{0};
 std::atomic<int64_t> g_inputLatencyUsEma{0};
 std::atomic<int64_t> g_inputEventsSampled{0};
 
+// Core-option overrides applied via GET_VARIABLE until the settings framework (P11).
+// PPSSPP's MIPS JIT emits self-modifying native code, which breaks inside nested
+// emulation (x86 AVD) and is the risky default generally; IR JIT is the compatible
+// middle ground (still fast, no runtime codegen pages).
+struct CoreVarOverride { const char* key; const char* value; };
+constexpr CoreVarOverride kCoreVariableOverrides[] = {
+    { "ppsspp_cpu_core", "IR JIT" },
+    // Native PSP resolution (1x). Also makes PPSSPP report a non-zero base geometry so the
+    // frontend knows the sub-rect of the hw FBO to display (otherwise av_info is 0×0).
+    { "ppsspp_internal_resolution", "480x272" },
+};
+
+// Save/load-state ops: posted from any thread, executed by the run-loop thread between
+// frames (retro_serialize/unserialize must run on the emu/GL thread — PPSSPP requires it).
+std::mutex g_opMutex;
+std::condition_variable g_opCv;
+std::atomic<bool> g_opPending{false};
+bool g_opIsSave = false;
+std::string g_opStatePath, g_opFramePath;
+bool g_opDone = true;
+bool g_opOk = false;
+
 int64_t monotonicNowNs() {
     timespec ts{};
     clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -116,7 +140,11 @@ void core_log(enum retro_log_level level, const char* fmt, ...) {
     __android_log_write(prio, "pulsar_core", buf);
 }
 
+std::atomic<int64_t> g_dbgGetFb{0};
+std::atomic<int64_t> g_dbgHwFrames{0}, g_dbgSwFrames{0}, g_dbgDupeFrames{0};
+
 uintptr_t hw_get_current_framebuffer() {
+    g_dbgGetFb.fetch_add(1);
     return g_video.currentFramebuffer();
 }
 
@@ -169,8 +197,20 @@ bool env_cb(unsigned cmd, void* data) {
             g_supportsNoGame = *(const bool*)data;
             return true;
 
-        case RETRO_ENVIRONMENT_GET_VARIABLE:
-            return false; // core option defaults for now (P11 wires the settings framework)
+        case RETRO_ENVIRONMENT_GET_VARIABLE: {
+            // Minimal override table until the settings framework (P11). Everything else
+            // falls through to the core's own default (return false).
+            auto* var = (retro_variable*)data;
+            if (!var || !var->key) return false;
+            for (const auto& kv : kCoreVariableOverrides) {
+                if (strcmp(var->key, kv.key) == 0) {
+                    var->value = kv.value;
+                    LOGI("core var %s -> %s (override)", kv.key, kv.value);
+                    return true;
+                }
+            }
+            return false;
+        }
 
         case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE:
             *(bool*)data = false;
@@ -193,12 +233,16 @@ bool env_cb(unsigned cmd, void* data) {
 
         case RETRO_ENVIRONMENT_SET_GEOMETRY: {
             auto* geo = (const retro_game_geometry*)data;
+            LOGI("SET_GEOMETRY %ux%u aspect=%.3f", geo->base_width, geo->base_height, geo->aspect_ratio);
             g_video.setGeometry(geo->base_width, geo->base_height, geo->aspect_ratio);
             return true;
         }
 
         case RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO: {
             auto* av = (const retro_system_av_info*)data;
+            LOGI("SET_SYSTEM_AV_INFO %ux%u aspect=%.3f fps=%.2f",
+                 av->geometry.base_width, av->geometry.base_height,
+                 av->geometry.aspect_ratio, av->timing.fps);
             g_video.setGeometry(av->geometry.base_width, av->geometry.base_height,
                                 av->geometry.aspect_ratio);
             if (av->timing.fps > 0) g_coreFps = av->timing.fps;
@@ -212,10 +256,15 @@ bool env_cb(unsigned cmd, void* data) {
 
 void video_cb(const void* data, unsigned width, unsigned height, size_t pitch) {
     if (data == RETRO_HW_FRAME_BUFFER_VALID) {
+        int64_t n = g_dbgHwFrames.fetch_add(1);
+        if (n < 3 || n == 100) LOGI("video_cb HW #%lld %ux%u", (long long)n, width, height);
         g_video.markHwFrame(width, height);
     } else if (data != nullptr) {
+        int64_t n = g_dbgSwFrames.fetch_add(1);
+        if (n < 3) LOGI("video_cb SW #%lld %ux%u pitch=%zu", (long long)n, width, height, pitch);
         g_video.submitSoftwareFrame(data, width, height, pitch);
     } else {
+        g_dbgDupeFrames.fetch_add(1);
         g_video.markDupeFrame();
     }
 }
@@ -315,6 +364,94 @@ void unloadCoreOnThread() {
     if (g_core.retro_deinit) g_core.retro_deinit();
     dlclose(g_core.handle);
     g_core = Core{};
+}
+
+// ---------------------------------------------------------------------------- state ops
+
+bool writeFileAtomic(const std::string& path, const void* data, size_t len) {
+    std::string tmp = path + ".tmp";
+    FILE* f = fopen(tmp.c_str(), "wb");
+    if (!f) { LOGE("state: fopen(%s) failed", tmp.c_str()); return false; }
+    bool ok = fwrite(data, 1, len, f) == len;
+    ok = (fclose(f) == 0) && ok;
+    if (ok) ok = rename(tmp.c_str(), path.c_str()) == 0;
+    if (!ok) { remove(tmp.c_str()); LOGE("state: write %s failed", path.c_str()); }
+    return ok;
+}
+
+bool doSaveStateOnThread(const std::string& statePath, const std::string& framePath) {
+    if (!g_core.retro_serialize || !g_core.retro_serialize_size) return false;
+    size_t n = g_core.retro_serialize_size();
+    if (n == 0) { LOGE("state: serialize_size = 0"); return false; }
+    std::vector<uint8_t> buf(n);
+    if (!g_core.retro_serialize(buf.data(), n)) { LOGE("state: retro_serialize failed"); return false; }
+    if (!writeFileAtomic(statePath, buf.data(), n)) return false;
+    LOGI("state saved: %s (%zu bytes)", statePath.c_str(), n);
+
+    if (!framePath.empty()) {
+        // Raw RGBA dump (int32 w, int32 h, then top-down rows); Kotlin turns it into a PNG.
+        std::vector<uint8_t> rgba;
+        unsigned w = 0, h = 0;
+        if (g_video.captureFrame(rgba, w, h)) {
+            std::vector<uint8_t> blob(8 + rgba.size());
+            int32_t wh[2] = { (int32_t)w, (int32_t)h };
+            memcpy(blob.data(), wh, 8);
+            memcpy(blob.data() + 8, rgba.data(), rgba.size());
+            writeFileAtomic(framePath, blob.data(), blob.size()); // best-effort
+        }
+    }
+    return true;
+}
+
+bool doLoadStateOnThread(const std::string& statePath) {
+    if (!g_core.retro_unserialize) return false;
+    FILE* f = fopen(statePath.c_str(), "rb");
+    if (!f) { LOGE("state: open(%s) failed", statePath.c_str()); return false; }
+    fseek(f, 0, SEEK_END);
+    long len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (len <= 0) { fclose(f); return false; }
+    std::vector<uint8_t> buf((size_t)len);
+    bool ok = fread(buf.data(), 1, (size_t)len, f) == (size_t)len;
+    fclose(f);
+    if (!ok) return false;
+    ok = g_core.retro_unserialize(buf.data(), buf.size());
+    LOGI("state load %s: %s", statePath.c_str(), ok ? "ok" : "FAILED");
+    return ok;
+}
+
+/** Run-loop thread: execute a posted state op, then wake the waiting caller. */
+void processStateOp() {
+    if (!g_opPending.load(std::memory_order_acquire)) return;
+    std::string statePath, framePath;
+    bool isSave;
+    {
+        std::lock_guard<std::mutex> lk(g_opMutex);
+        statePath = g_opStatePath;
+        framePath = g_opFramePath;
+        isSave = g_opIsSave;
+    }
+    bool ok = isSave ? doSaveStateOnThread(statePath, framePath)
+                     : doLoadStateOnThread(statePath);
+    {
+        std::lock_guard<std::mutex> lk(g_opMutex);
+        g_opOk = ok;
+        g_opDone = true;
+        g_opPending = false;
+    }
+    g_opCv.notify_all();
+}
+
+/** Run-loop teardown: fail any op still queued so its caller doesn't wait out the timeout. */
+void failPendingStateOp() {
+    if (!g_opPending.load()) return;
+    {
+        std::lock_guard<std::mutex> lk(g_opMutex);
+        g_opOk = false;
+        g_opDone = true;
+        g_opPending = false;
+    }
+    g_opCv.notify_all();
 }
 
 } // namespace
@@ -481,6 +618,7 @@ Java_com_retrovault_emulator_LibretroBridge_nativeRunLoop(JNIEnv*, jobject) {
                 g_audio.stop();
                 resumeFrameMark = g_video.stats.framesPresented.load();
             }
+            processStateOp(); // auto-save-on-exit runs here, after the Surface is gone
             std::this_thread::sleep_for(std::chrono::milliseconds(15));
             nextFrame = std::chrono::steady_clock::now();
             continue;
@@ -493,6 +631,7 @@ Java_com_retrovault_emulator_LibretroBridge_nativeRunLoop(JNIEnv*, jobject) {
         g_audio.updateRateControl();
         g_core.retro_run();
         g_video.present();
+        processStateOp();
 
         if (!g_audio.isRunning() && g_audioSourceRate > 0 &&
             g_video.stats.framesPresented.load() >= resumeFrameMark + kAudioWarmupFrames) {
@@ -513,6 +652,13 @@ Java_com_retrovault_emulator_LibretroBridge_nativeRunLoop(JNIEnv*, jobject) {
 
     LOGI("run loop exiting: %llu frames presented",
          (unsigned long long)g_video.stats.framesPresented.load());
+    LOGI("video_cb tally: hw=%lld sw=%lld dupe=%lld get_fb_calls=%lld",
+         (long long)g_dbgHwFrames.load(), (long long)g_dbgSwFrames.load(),
+         (long long)g_dbgDupeFrames.load(), (long long)g_dbgGetFb.load());
+    // Last chance for a queued op (e.g. auto-save posted right before requestStop), then
+    // fail anything that raced in after it.
+    processStateOp();
+    failPendingStateOp();
     // Teardown order matters: audio stops first (its producer is the core thread), then
     // context_destroy fires while the core is still loaded and the GL context is current;
     // only then unload/dlclose the core; EGL goes down last.
@@ -609,29 +755,43 @@ Java_com_retrovault_emulator_LibretroBridge_nativeSetBtFriendlyAudio(JNIEnv*, jo
     g_audio.setBluetoothFriendly(bt == JNI_TRUE);
 }
 
-JNIEXPORT jint JNICALL
-Java_com_retrovault_emulator_LibretroBridge_nativeSerializeSize(JNIEnv*, jobject) {
-    return g_core.retro_serialize_size ? (jint)g_core.retro_serialize_size() : 0;
-}
+// ---- save states (P8): blocking ops executed by the run-loop thread ----
 
-JNIEXPORT jbyteArray JNICALL
-Java_com_retrovault_emulator_LibretroBridge_nativeSerialize(JNIEnv* env, jobject) {
-    if (!g_core.retro_serialize || !g_core.retro_serialize_size) return nullptr;
-    size_t n = g_core.retro_serialize_size();
-    std::vector<uint8_t> buf(n);
-    if (!g_core.retro_serialize(buf.data(), n)) return nullptr;
-    jbyteArray arr = env->NewByteArray((jsize)n);
-    env->SetByteArrayRegion(arr, 0, (jsize)n, (const jbyte*)buf.data());
-    return arr;
+static jboolean postStateOp(JNIEnv* env, bool isSave, jstring statePath, jstring framePath) {
+    if (!g_running.load()) return JNI_FALSE;
+    const char* sp = env->GetStringUTFChars(statePath, nullptr);
+    std::string statePathStr(sp ? sp : "");
+    env->ReleaseStringUTFChars(statePath, sp);
+    std::string framePathStr;
+    if (framePath) {
+        const char* fp = env->GetStringUTFChars(framePath, nullptr);
+        framePathStr = fp ? fp : "";
+        env->ReleaseStringUTFChars(framePath, fp);
+    }
+    if (statePathStr.empty()) return JNI_FALSE;
+
+    std::unique_lock<std::mutex> lk(g_opMutex);
+    if (g_opPending.load()) return JNI_FALSE; // one op at a time
+    g_opIsSave = isSave;
+    g_opStatePath = statePathStr;
+    g_opFramePath = framePathStr;
+    g_opDone = false;
+    g_opOk = false;
+    g_opPending.store(true, std::memory_order_release);
+    // PPSSPP serialize of a big session can take a moment; 20s is generous headroom.
+    bool done = g_opCv.wait_for(lk, std::chrono::seconds(20), [] { return g_opDone; });
+    return (done && g_opOk) ? JNI_TRUE : JNI_FALSE;
 }
 
 JNIEXPORT jboolean JNICALL
-Java_com_retrovault_emulator_LibretroBridge_nativeUnserialize(JNIEnv* env, jobject, jbyteArray data) {
-    if (!g_core.retro_unserialize) return JNI_FALSE;
-    jsize n = env->GetArrayLength(data);
-    std::vector<uint8_t> buf((size_t)n);
-    env->GetByteArrayRegion(data, 0, n, (jbyte*)buf.data());
-    return g_core.retro_unserialize(buf.data(), (size_t)n) ? JNI_TRUE : JNI_FALSE;
+Java_com_retrovault_emulator_LibretroBridge_nativeSaveState(
+    JNIEnv* env, jobject, jstring statePath, jstring rawFramePath) {
+    return postStateOp(env, true, statePath, rawFramePath);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_retrovault_emulator_LibretroBridge_nativeLoadState(JNIEnv* env, jobject, jstring statePath) {
+    return postStateOp(env, false, statePath, nullptr);
 }
 
 } // extern "C"

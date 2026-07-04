@@ -75,6 +75,7 @@ class FirstLightTest {
         assertTrue("ppsspp core not bundled", core.exists())
         val systemDir = File(ctx.filesDir, "system").apply { mkdirs() }
         val saveDir = File(ctx.filesDir, "saves-core").apply { mkdirs() }
+        com.retrovault.emulator.CoreAssets.ensureExtracted(ctx, systemDir)
 
         val intent = Intent(ctx, RenderTestActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

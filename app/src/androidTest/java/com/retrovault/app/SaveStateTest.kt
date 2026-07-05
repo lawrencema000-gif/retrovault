@@ -64,6 +64,9 @@ class SaveStateTest {
         val systemDir = File(ctx.filesDir, "system").apply { mkdirs() }
         val saveDir = File(ctx.filesDir, "saves-core").apply { mkdirs() }
         com.retrovault.emulator.CoreAssets.ensureExtracted(ctx, systemDir)
+        // Mirror production: resolver-driven core variables (device layer supplies IR JIT +
+        // native res on this x86 AVD) — without them PPSSPP boots black.
+        com.retrovault.settings.SettingsResolver(ctx).applyToCore(null)
 
         val mgr = SaveStateManager(ctx, "battlegrounds-3")
         mgr.delete(1)
@@ -76,6 +79,7 @@ class SaveStateTest {
         val intent = Intent(ctx, RenderTestActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val activity = instrumentation.startActivitySync(intent) as RenderTestActivity
+        var doneRef: CountDownLatch? = null
         try {
             assertTrue("surface never came up", activity.surfaceReady.await(8, TimeUnit.SECONDS))
 
@@ -85,6 +89,7 @@ class SaveStateTest {
             )
             val loopOk = AtomicBoolean(false)
             val loopDone = CountDownLatch(1)
+            doneRef = loopDone
             Thread({
                 loopOk.set(LibretroBridge.nativeRunLoop())
                 loopDone.countDown()
@@ -136,6 +141,9 @@ class SaveStateTest {
             assertTrue("run loop did not exit", loopDone.await(10, TimeUnit.SECONDS))
             assertTrue("core failed", loopOk.get())
         } finally {
+            // Stop AND await the loop — a failed assertion must not poison the next test.
+            LibretroBridge.nativeRequestStop()
+            doneRef?.await(15, TimeUnit.SECONDS)
             activity.finish()
             instrumentation.waitForIdleSync()
         }

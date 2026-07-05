@@ -54,10 +54,17 @@ import androidx.compose.ui.unit.sp
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material.icons.filled.Search
 import com.retrovault.core.model.GameSystem
 import com.retrovault.download.BiosStatus
 import com.retrovault.download.RomImporter
 import com.retrovault.billing.LocalBillingManager
+import com.retrovault.settings.Category
+import com.retrovault.settings.DeviceClass
+import com.retrovault.settings.Origin
+import com.retrovault.settings.ResolvedSetting
+import com.retrovault.settings.SettingDef
+import com.retrovault.settings.SettingsResolver
 import com.retrovault.core.ui.theme.ChakraPetch
 import com.retrovault.core.ui.theme.PulsarAccentBrush
 import com.retrovault.core.ui.theme.PulsarBlueBrush
@@ -73,17 +80,37 @@ import com.retrovault.core.ui.theme.PulsarTextDim
 import com.retrovault.core.ui.theme.PulsarTextFaint
 import com.retrovault.core.ui.theme.PulsarYellow
 
+/**
+ * Settings, driven by the 4-layer resolver. [gameKey] switches the screen into per-game
+ * mode: edits write the game's diff layer and rows badge where each value came from.
+ */
 @Composable
-fun SettingsScreen() {
-    var res by remember { mutableIntStateOf(1) }
-    var crt by remember { mutableStateOf(true) }
-    var smoothing by remember { mutableStateOf(false) }
-    var audio by remember { mutableStateOf(true) }
-    var vol by remember { mutableFloatStateOf(0.8f) }
-    var autosave by remember { mutableStateOf(true) }
-    var rewind by remember { mutableStateOf(false) }
-
+fun SettingsScreen(gameKey: String? = null, gameTitle: String? = null) {
     val context = LocalContext.current
+    val resolver = remember { SettingsResolver(context) }
+    var tick by remember { mutableIntStateOf(0) }
+    var query by remember { mutableStateOf("") }
+    val resolved = remember(tick, gameKey) { resolver.resolveAll(gameKey) }
+    val visible = remember(resolved, query) {
+        if (query.isBlank()) resolved
+        else resolved.filter {
+            it.def.title.contains(query, true) || it.def.description.contains(query, true)
+        }
+    }
+
+    fun setValue(r: ResolvedSetting, value: String) {
+        resolver.setUserValue(r.def, value, gameKey)
+        // Live-apply to a running session (no-op when nothing is running).
+        resolver.applyToCore(gameKey)
+        tick++
+    }
+
+    fun reset(r: ResolvedSetting) {
+        resolver.clearUserValue(r.def, gameKey)
+        resolver.applyToCore(gameKey)
+        tick++
+    }
+
     var biosTick by remember { mutableIntStateOf(0) }
     val ps1Bios = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { RomImporter.importBios(context, GameSystem.PS1, it); biosTick++ }
@@ -105,42 +132,65 @@ fun SettingsScreen() {
             .padding(top = 56.dp, bottom = 110.dp)
             .padding(horizontal = 22.dp)
     ) {
-        Text("Settings", fontFamily = ChakraPetch, fontWeight = FontWeight.Bold, fontSize = 26.sp, color = PulsarText)
-
-        Section("PULSAR GOLD") {
-            GoldRow(isGold) { if (!isGold) { billing.purchaseGold(); goldTick++ } }
+        Text(
+            if (gameKey == null) "Settings" else "Game settings",
+            fontFamily = ChakraPetch, fontWeight = FontWeight.Bold, fontSize = 26.sp, color = PulsarText
+        )
+        if (gameTitle != null) {
+            Text(gameTitle, fontSize = 12.sp, color = PulsarTextDim)
         }
 
-        Section("VIDEO") {
-            ResolutionRow(res) { res = it }
-            Divider()
-            ToggleRow(Icons.Filled.Grain, PulsarTeal, "CRT Filter", crt) { crt = !crt }
-            Divider()
-            ToggleRow(Icons.Filled.BlurOn, PulsarYellow, "Texture Smoothing", smoothing) { smoothing = !smoothing }
+        Spacer(Modifier.height(14.dp))
+        SearchField(query) { query = it }
+
+        if (gameKey == null) {
+            Section("PULSAR GOLD") {
+                GoldRow(isGold) { if (!isGold) { billing.purchaseGold(); goldTick++ } }
+            }
         }
 
-        Section("AUDIO") {
-            ToggleRow(Icons.Filled.VolumeUp, PulsarPrimary, "Enable Audio", audio) { audio = !audio }
-            Divider()
-            VolumeRow(vol) { vol = it }
+        for (category in listOf(
+            Category.VIDEO, Category.AUDIO, Category.EMULATION, Category.CONTROLS, Category.SYSTEM
+        )) {
+            val rows = visible.filter { it.def.category == category }
+            if (rows.isEmpty()) continue
+            Section(category.name) {
+                rows.forEachIndexed { i, r ->
+                    if (i > 0) Divider()
+                    when (val def = r.def) {
+                        is SettingDef.Toggle -> SettingToggleRow(
+                            r, onToggle = { setValue(r, (!r.asBoolean).toString()) },
+                            onReset = { reset(r) },
+                        )
+                        is SettingDef.Choice -> SettingChoiceRow(
+                            r, def,
+                            onCycle = {
+                                val idx = def.options.indexOfFirst { it.first == r.value }
+                                val next = def.options[(idx + 1).mod(def.options.size)].first
+                                setValue(r, next)
+                            },
+                            onReset = { reset(r) },
+                        )
+                    }
+                }
+            }
         }
 
-        Section("EMULATION") {
-            ToggleRow(Icons.Filled.BookmarkAdded, PulsarTeal, "Auto Save States", autosave) { autosave = !autosave }
-            Divider()
-            ToggleRow(Icons.Filled.Replay, PulsarYellow, "Rewind Buffer", rewind) { rewind = !rewind }
-            Divider()
-            NavRow(Icons.Filled.VideogameAsset, PulsarYellow, "Controller Mapping")
-        }
+        if (gameKey == null && query.isBlank()) {
+            Section("BIOS") {
+                BiosRow("PlayStation", ps1BiosInstalled) { ps1Bios.launch(arrayOf("*/*")) }
+                Divider()
+                BiosRow("PlayStation 2", ps2BiosInstalled) { ps2Bios.launch(arrayOf("*/*")) }
+            }
 
-        Section("BIOS") {
-            BiosRow("PlayStation", ps1BiosInstalled) { ps1Bios.launch(arrayOf("*/*")) }
-            Divider()
-            BiosRow("PlayStation 2", ps2BiosInstalled) { ps2Bios.launch(arrayOf("*/*")) }
-        }
-
-        Section("SYSTEM") {
-            StatusRow(Icons.Filled.Info, PulsarTextBody, "Version", "PULSAR 0.1.0", PulsarTextDim, showCheck = false)
+            Section("SYSTEM INFO") {
+                StatusRow(Icons.Filled.Info, PulsarTextBody, "Version", "PULSAR 0.1.0", PulsarTextDim, showCheck = false)
+                Divider()
+                StatusRow(
+                    Icons.Filled.Memory, PulsarTextBody, "Device class",
+                    DeviceClass.family().name, PulsarTextDim, showCheck = false
+                )
+            }
         }
 
         Spacer(Modifier.height(18.dp))
@@ -150,6 +200,129 @@ fun SettingsScreen() {
             fontSize = 11.sp,
             lineHeight = 16.sp,
             color = PulsarTextFaint
+        )
+    }
+}
+
+@Composable
+private fun SearchField(query: String, onChange: (String) -> Unit) {
+    androidx.compose.foundation.text.BasicTextField(
+        value = query,
+        onValueChange = onChange,
+        singleLine = true,
+        textStyle = androidx.compose.ui.text.TextStyle(color = PulsarText, fontSize = 13.sp),
+        cursorBrush = androidx.compose.ui.graphics.SolidColor(PulsarPrimary),
+        decorationBox = { inner ->
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(PulsarSurface1)
+                    .border(1.dp, PulsarStrokeSoft, RoundedCornerShape(12.dp))
+                    .padding(horizontal = 14.dp, vertical = 11.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Icon(Icons.Filled.Search, null, tint = PulsarTextDim, modifier = Modifier.size(17.dp))
+                Box(Modifier.weight(1f)) {
+                    if (query.isEmpty()) Text("Search settings…", fontSize = 13.sp, color = PulsarTextFaint)
+                    inner()
+                }
+            }
+        }
+    )
+}
+
+@Composable
+private fun OriginBadge(origin: Origin) {
+    val (label, color) = when (origin) {
+        Origin.DEFAULT -> return // defaults are unbadged noise
+        Origin.GAMEDB -> "GAMEDB" to PulsarPrimary
+        Origin.DEVICE -> "DEVICE" to PulsarYellow
+        Origin.USER_GLOBAL -> "CUSTOM" to PulsarTeal
+        Origin.USER_GAME -> "THIS GAME" to PulsarTeal
+    }
+    Box(
+        Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(color.copy(alpha = 0.16f))
+            .border(1.dp, color.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
+            .padding(horizontal = 6.dp, vertical = 2.dp)
+    ) {
+        Text(label, fontSize = 8.sp, letterSpacing = 1.sp, color = color, fontFamily = ChakraPetch, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun SettingTitle(r: ResolvedSetting) {
+    Column(Modifier.fillMaxWidth(0.62f)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(r.def.title, fontSize = 14.sp, color = PulsarTextBody)
+            OriginBadge(r.origin)
+        }
+        Text(r.def.description, fontSize = 10.sp, lineHeight = 14.sp, color = PulsarTextFaint)
+    }
+}
+
+@Composable
+private fun SettingToggleRow(r: ResolvedSetting, onToggle: () -> Unit, onReset: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        SettingTitle(r)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ResetDot(r, onReset)
+            PulsarSwitch(r.asBoolean, onToggle)
+        }
+    }
+}
+
+@Composable
+private fun SettingChoiceRow(
+    r: ResolvedSetting,
+    def: SettingDef.Choice,
+    onCycle: () -> Unit,
+    onReset: () -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onCycle)
+            .padding(horizontal = 16.dp, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        SettingTitle(r)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ResetDot(r, onReset)
+            Text(
+                def.options.firstOrNull { it.first == r.value }?.second ?: r.value,
+                fontSize = 12.sp, color = PulsarTeal, fontFamily = ChakraPetch,
+                textAlign = androidx.compose.ui.text.style.TextAlign.End,
+            )
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight, null,
+                tint = PulsarTextDim, modifier = Modifier.size(18.dp)
+            )
+        }
+    }
+}
+
+/** Small reset affordance shown only when the user has overridden this scope. */
+@Composable
+private fun ResetDot(r: ResolvedSetting, onReset: () -> Unit) {
+    if (r.origin == Origin.USER_GLOBAL || r.origin == Origin.USER_GAME) {
+        Icon(
+            Icons.Filled.Replay, "Reset",
+            tint = PulsarTextFaint,
+            modifier = Modifier
+                .size(18.dp)
+                .clip(CircleShape)
+                .clickable(onClick = onReset)
         )
     }
 }

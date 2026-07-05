@@ -122,4 +122,16 @@ object LibretroBridge {
     /** RetroAchievements-ready interlock: while on, FF/slow-mo/rewind are refused. */
     external fun nativeSetHardcore(on: Boolean)
     external fun nativeIsHardcore(): Boolean
+
+    // ---- core variables (P11 settings framework) ----
+
+    /**
+     * Set a libretro core option (e.g. "ppsspp_internal_resolution" = "960x544"). Applies
+     * live: the core re-queries all variables via the GET_VARIABLE_UPDATE handshake.
+     */
+    external fun nativeSetCoreVariable(key: String, value: String)
+    external fun nativeGetCoreVariable(key: String): String?
+
+    /** True while a variable change is still waiting for the core to re-query. */
+    external fun nativeVariablesDirty(): Boolean
 }

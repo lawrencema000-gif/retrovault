@@ -84,6 +84,12 @@ class EmulatorActivity : ComponentActivity() {
             LibretroBridge.nativeInitSwappy(this)
         }
 
+        // Resolve settings (4-layer: defaults → gamedb → device-class → user) and push the
+        // core-variable-backed ones BEFORE the core loads (some are read only at load).
+        val gameKeyForSettings = intent.getStringExtra(EXTRA_GAME_ID)
+        val settings = com.retrovault.settings.SettingsResolver(applicationContext)
+        settings.applyToCore(gameKeyForSettings)
+
         if (coreOverride != null) {
             session.start(this, coreOverride, gamePath)
         } else {
@@ -98,8 +104,10 @@ class EmulatorActivity : ComponentActivity() {
         }
 
         // Rewind ring: 256MB budget, snapshot every 2s (PSP states ≈ 42MB → ~6 snapshots =
-        // ~12s of rewind; tiny cores get minutes). Budget becomes a setting at P11.
-        session.enableRewind(256L * 1024 * 1024, intervalFrames = 120)
+        // ~12s of rewind; tiny cores get minutes). Gated by the settings framework.
+        if (settings.resolve(com.retrovault.settings.PspSettings.REWIND_ENABLED, gameKeyForSettings).asBoolean) {
+            session.enableRewind(256L * 1024 * 1024, intervalFrames = 120)
+        }
 
         // "Continue" from the library: restore the auto-save once the game has booted.
         if (intent.getBooleanExtra(EXTRA_RESUME, false) && saveStates != null) {

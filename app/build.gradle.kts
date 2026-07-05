@@ -64,6 +64,7 @@ dependencies {
     implementation(project(":data-download"))
     implementation(project(":data-library"))
     implementation(project(":data-saves"))
+    implementation(project(":data-settings"))
     implementation(project(":feature-store"))
     implementation(project(":feature-player"))
 

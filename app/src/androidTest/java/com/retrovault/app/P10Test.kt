@@ -36,6 +36,8 @@ class P10Test {
         val systemDir = File(ctx.filesDir, "system").apply { mkdirs() }
         val saveDir = File(ctx.filesDir, "saves-core").apply { mkdirs() }
         CoreAssets.ensureExtracted(ctx, systemDir)
+        // Mirror production: resolver-driven core variables (IR JIT + native res on x86 AVD).
+        com.retrovault.settings.SettingsResolver(ctx).applyToCore(null)
         LibretroBridge.nativeStartSession(corePath, gamePath, systemDir.absolutePath, saveDir.absolutePath)
         val done = CountDownLatch(1)
         val ok = AtomicBoolean(false)

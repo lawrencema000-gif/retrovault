@@ -22,6 +22,7 @@ dependencies {
     implementation(project(":core-emulator"))
     implementation(project(":core-input"))
     implementation(project(":data-saves"))
+    implementation(project(":data-settings"))
     implementation(project(":data-download"))
 
     implementation(libs.androidx.core.ktx)

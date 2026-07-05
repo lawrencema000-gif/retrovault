@@ -23,6 +23,27 @@
 > pass-through); SAF-tree scan + ISO9660 unverified without a device/real ISO; wiring imported
 > games into the Library UI grid lands with the installed-games section.
 >
+> ✅ **P11 done (2026-07-05):** Settings framework. **4-layer resolution engine** (`:data-settings`):
+> DEFAULT → GAMEDB (provider stub, wired to Supabase at P12) → DEVICE → USER_GLOBAL →
+> USER_GAME, every value carrying its **origin badge**; user layers stored as JSON *diffs*
+> (only explicit overrides). Typed `SettingDef` registry (Toggle/Choice) mapped to PPSSPP
+> core options (internal resolution, frameskip, texture filter/upscale, CPU core, fast
+> memory…). **Native core variables now fully dynamic**: `nativeSetCoreVariable` +
+> GET_VARIABLE map + **GET_VARIABLE_UPDATE handshake** for live mid-session changes (the
+> hardcoded override table from the P8 render fix is deleted — the device layer supplies
+> IR JIT + native res on x86 AVDs, real arm64 devices default to full JIT + 2×).
+> `DeviceClass` detection (Adreno/Mali/Xclipse/PowerVR/emulator; GL-renderer string capture
+> point + ABI fallback). `BackendPolicy`: Vulkan/GLES picker with persistent failed-backend
+> blacklist + clean terminal fallback to GLES3 (Vulkan context negotiation itself lands with
+> the PS2 pass). Settings UI rewritten resolver-driven: searchable, origin badges, tap-to-
+> cycle choices, per-override reset, per-game mode (`SettingsScreen(gameKey)`), device-class
+> readout; Gold/BIOS sections kept. EmulatorActivity resolves + pushes vars BEFORE core load;
+> rewind gated by its setting. SettingsTest: layer precedence + origins (incl. GameDB stub),
+> diff persistence, backend fallback/blacklist, and resolver-driven variables booting the
+> REAL game + live-update dirty handshake — **OK (4)**; full suite **OK (32 tests)** (the
+> PPSSPP-booting tests now push resolver variables exactly like production — the new
+> contract after deleting the hardcoded table).
+>
 > ✅ **P10 done (2026-07-05):** The convenience layer. **Fast-forward** (2×–5× via batched
 > `retro_run`s per presented frame — intermediate frames neither shown nor audible = SKIP_FLIP
 > battery mode by construction; 50% slow-mo; proven by audio-frames-produced more than

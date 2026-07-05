@@ -22,6 +22,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <map>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -103,17 +104,13 @@ std::atomic<int64_t> g_lastInputEventNs{0};
 std::atomic<int64_t> g_inputLatencyUsEma{0};
 std::atomic<int64_t> g_inputEventsSampled{0};
 
-// Core-option overrides applied via GET_VARIABLE until the settings framework (P11).
-// PPSSPP's MIPS JIT emits self-modifying native code, which breaks inside nested
-// emulation (x86 AVD) and is the risky default generally; IR JIT is the compatible
-// middle ground (still fast, no runtime codegen pages).
-struct CoreVarOverride { const char* key; const char* value; };
-constexpr CoreVarOverride kCoreVariableOverrides[] = {
-    { "ppsspp_cpu_core", "IR JIT" },
-    // Native PSP resolution (1x). Also makes PPSSPP report a non-zero base geometry so the
-    // frontend knows the sub-rect of the hw FBO to display (otherwise av_info is 0×0).
-    { "ppsspp_internal_resolution", "480x272" },
-};
+// Core variables (settings framework, P11): pushed from Kotlin via nativeSetCoreVariable
+// before/at session start and updatable mid-session (GET_VARIABLE_UPDATE handshake).
+// GET_VARIABLE hands out pointers into these strings — values are stable std::string
+// storage that lives for the process (entries are only ever replaced, keys never erased).
+std::mutex g_varsMutex;
+std::map<std::string, std::string> g_coreVars;
+std::atomic<bool> g_varsDirty{false};
 
 // Run-loop ops: posted from any thread, executed by the run-loop thread between frames
 // (retro_serialize/unserialize must run on the emu/GL thread — PPSSPP requires it).
@@ -231,22 +228,19 @@ bool env_cb(unsigned cmd, void* data) {
             return true;
 
         case RETRO_ENVIRONMENT_GET_VARIABLE: {
-            // Minimal override table until the settings framework (P11). Everything else
-            // falls through to the core's own default (return false).
             auto* var = (retro_variable*)data;
             if (!var || !var->key) return false;
-            for (const auto& kv : kCoreVariableOverrides) {
-                if (strcmp(var->key, kv.key) == 0) {
-                    var->value = kv.value;
-                    LOGI("core var %s -> %s (override)", kv.key, kv.value);
-                    return true;
-                }
-            }
-            return false;
+            std::lock_guard<std::mutex> lk(g_varsMutex);
+            auto it = g_coreVars.find(var->key);
+            if (it == g_coreVars.end()) return false; // core uses its own default
+            var->value = it->second.c_str();
+            return true;
         }
 
         case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE:
-            *(bool*)data = false;
+            // The core polls this each frame; a true response makes it re-query GET_VARIABLE
+            // for everything (live mid-session setting changes).
+            *(bool*)data = g_varsDirty.exchange(false);
             return true;
 
         case RETRO_ENVIRONMENT_SET_VARIABLES:
@@ -1010,6 +1004,45 @@ JNIEXPORT void JNICALL
 Java_com_retrovault_emulator_LibretroBridge_nativeSetHardcore(JNIEnv*, jobject, jboolean on) {
     g_hardcoreActive = on == JNI_TRUE;
     if (on == JNI_TRUE) g_speedPct = 100;
+}
+
+// ---- core variables (P11 settings framework) ----
+
+JNIEXPORT void JNICALL
+Java_com_retrovault_emulator_LibretroBridge_nativeSetCoreVariable(
+    JNIEnv* env, jobject, jstring key, jstring value) {
+    const char* k = env->GetStringUTFChars(key, nullptr);
+    const char* v = env->GetStringUTFChars(value, nullptr);
+    if (k && v) {
+        std::lock_guard<std::mutex> lk(g_varsMutex);
+        auto it = g_coreVars.find(k);
+        if (it == g_coreVars.end() || it->second != v) {
+            g_coreVars[k] = v;
+            g_varsDirty = true;
+            LOGI("core var %s = %s", k, v);
+        }
+    }
+    env->ReleaseStringUTFChars(key, k);
+    env->ReleaseStringUTFChars(value, v);
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_retrovault_emulator_LibretroBridge_nativeGetCoreVariable(JNIEnv* env, jobject, jstring key) {
+    const char* k = env->GetStringUTFChars(key, nullptr);
+    std::string out;
+    bool found = false;
+    if (k) {
+        std::lock_guard<std::mutex> lk(g_varsMutex);
+        auto it = g_coreVars.find(k);
+        if (it != g_coreVars.end()) { out = it->second; found = true; }
+    }
+    env->ReleaseStringUTFChars(key, k);
+    return found ? env->NewStringUTF(out.c_str()) : nullptr;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_retrovault_emulator_LibretroBridge_nativeVariablesDirty(JNIEnv*, jobject) {
+    return g_varsDirty.load() ? JNI_TRUE : JNI_FALSE;
 }
 
 JNIEXPORT jboolean JNICALL

@@ -76,6 +76,8 @@ object LibretroBridge {
 
     // ---- audio stats / config (P3) ----
     external fun nativeAudioFramesOut(): Long
+    /** Audio frames the core has produced — scales with emulation speed (FF observable). */
+    external fun nativeAudioFramesProduced(): Long
     external fun nativeAudioUnderruns(): Long
     external fun nativeAudioFillPct(): Int
     /** Dynamic-rate-control deviation ×1e6 (±5000 = the ±0.5% cap). */
@@ -97,4 +99,27 @@ object LibretroBridge {
 
     /** Counterpart to [nativeSaveState]: retro_unserialize [statePath] on the run-loop thread. */
     external fun nativeLoadState(statePath: String): Boolean
+
+    /** Dump the last presented frame (raw RGBA, same format as save-state frames). */
+    external fun nativeScreenshot(rawFramePath: String): Boolean
+
+    // ---- speed / rewind / hardcore (P10) ----
+
+    /** Percent of realtime: 50 (slow-mo), 100, 200–500. No-op while hardcore is active. */
+    external fun nativeSetSpeed(pct: Int)
+    external fun nativeGetSpeed(): Int
+
+    /**
+     * Enable rewind with a RAM budget: slots = budgetBytes / serialize_size (min 1, cap 120),
+     * one snapshot every [intervalFrames]. Pass budget 0 to disable and free the ring.
+     */
+    external fun nativeSetRewind(budgetBytes: Long, intervalFrames: Int)
+    external fun nativeRewindCount(): Int
+
+    /** Restore the newest rewind snapshot (blocking op). False when the ring is empty. */
+    external fun nativeRewindStep(): Boolean
+
+    /** RetroAchievements-ready interlock: while on, FF/slow-mo/rewind are refused. */
+    external fun nativeSetHardcore(on: Boolean)
+    external fun nativeIsHardcore(): Boolean
 }

@@ -43,6 +43,7 @@ import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.delay
 import com.retrovault.download.DownloadManager
 import com.retrovault.download.GameInstaller
+import com.retrovault.saves.SaveStateManager
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -80,7 +81,7 @@ import com.retrovault.data.SupabaseCatalogRepository
 fun GameDetailScreen(
     gameId: String,
     onBack: () -> Unit,
-    onPlay: (String, String, GameSystem, String?) -> Unit = { _, _, _, _ -> },
+    onPlay: (String, String, GameSystem, String?, Boolean) -> Unit = { _, _, _, _, _ -> },
 ) {
     val game = remember(gameId) {
         SupabaseCatalogRepository.cachedById(gameId) ?: CatalogRepository.byId(gameId)
@@ -201,10 +202,15 @@ fun GameDetailScreen(
 
             // primary CTA
             Spacer(Modifier.height(22.dp))
-            // CTA state machine: Play (installed) / Downloading / Download (hosted) / Coming soon.
+            // CTA state machine: Continue (auto-save) / Play (installed) / Downloading /
+            // Download (hosted) / Coming soon.
             val installed = installedPath != null
+            val hasAutoSave = remember(installed, gameId) {
+                installed && SaveStateManager(context, gameId).isPopulated(SaveStateManager.AUTO_SLOT)
+            }
             val ctaEnabled = installed || (!downloading && game.downloadable)
             val ctaLabel = when {
+                hasAutoSave -> "CONTINUE"
                 installed -> "PLAY"
                 downloading -> "DOWNLOADING…"
                 game.downloadable -> "DOWNLOAD"
@@ -226,7 +232,7 @@ fun GameDetailScreen(
                     )
                     .clickable(enabled = ctaEnabled) {
                         if (installed) {
-                            onPlay(game.id, game.title, game.system, installedPath)
+                            onPlay(game.id, game.title, game.system, installedPath, hasAutoSave)
                         } else if (game.downloadable) {
                             DownloadManager.enqueue(
                                 context, game.id, game.slug, game.system,

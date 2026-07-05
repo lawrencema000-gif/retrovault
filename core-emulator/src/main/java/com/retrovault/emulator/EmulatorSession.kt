@@ -88,6 +88,27 @@ class EmulatorSession {
     fun loadState(statePath: String): Boolean =
         status == CoreStatus.RUNNING && LibretroBridge.nativeLoadState(statePath)
 
+    /** Emulation speed in percent of realtime (50 slow-mo / 100 / 200–500 FF). */
+    var speedPct: Int
+        get() = if (LibretroBridge.available) LibretroBridge.nativeGetSpeed() else 100
+        set(value) {
+            if (LibretroBridge.available) LibretroBridge.nativeSetSpeed(value)
+        }
+
+    /** RetroAchievements-ready interlock: disables FF/slow-mo/rewind while set. */
+    var hardcoreActive: Boolean
+        get() = LibretroBridge.available && LibretroBridge.nativeIsHardcore()
+        set(value) {
+            if (LibretroBridge.available) LibretroBridge.nativeSetHardcore(value)
+        }
+
+    fun enableRewind(budgetBytes: Long, intervalFrames: Int = 120) {
+        if (LibretroBridge.available) LibretroBridge.nativeSetRewind(budgetBytes, intervalFrames)
+    }
+
+    fun rewindStep(): Boolean =
+        status == CoreStatus.RUNNING && LibretroBridge.nativeRewindStep()
+
     fun stop() {
         if (status == CoreStatus.RUNNING || LibretroBridge.nativeIsRunning()) {
             LibretroBridge.nativeRequestStop()

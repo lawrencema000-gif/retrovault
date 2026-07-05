@@ -84,8 +84,11 @@ fun PlayerScreen(
     menuRequests: Int = 0,
     onSaveState: () -> Unit = {},
     onLoadState: () -> Unit = {},
+    saveStates: com.retrovault.saves.SaveStateManager? = null,
+    onScreenshot: () -> Unit = {},
 ) {
     var showMenu by remember { mutableStateOf(false) }
+    var showSlots by remember { mutableStateOf(false) }
     var fastForward by remember { mutableStateOf(false) }
     // Gamepad MENU virtkey opens the quick menu (counter bump per press).
     androidx.compose.runtime.LaunchedEffect(menuRequests) {
@@ -204,7 +207,7 @@ fun PlayerScreen(
             ) { Icon(Icons.Filled.Menu, null, tint = Color.White, modifier = Modifier.size(22.dp)) }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (fastForward) Chip("2×", PulsarPrimary, Color(0x402A7FFF))
+                if (fastForward) Chip("${session.speedPct / 100}×", PulsarPrimary, Color(0x402A7FFF))
                 Chip(if (running) "ON" else "--", Color.White.copy(alpha = 0.75f), HudGlass)
             }
         }
@@ -213,11 +216,24 @@ fun PlayerScreen(
             QuickMenu(
                 title = title,
                 fastForward = fastForward,
-                onToggleFf = { fastForward = !fastForward },
+                onToggleFf = {
+                    fastForward = !fastForward
+                    session.speedPct = if (fastForward) 200 else 100
+                },
                 onDismiss = { showMenu = false },
                 onQuit = { session.stop(); onQuit() },
                 onSaveState = { onSaveState(); showMenu = false },
                 onLoadState = { onLoadState(); showMenu = false },
+                onRewind = { session.rewindStep(); showMenu = false },
+                onScreenshot = { onScreenshot(); showMenu = false },
+                onSlots = if (saveStates != null) ({ showSlots = true; showMenu = false }) else null,
+            )
+        }
+
+        if (showSlots && saveStates != null) {
+            SlotManagerSheet(
+                manager = saveStates,
+                onDismiss = { showSlots = false },
             )
         }
 
@@ -272,6 +288,9 @@ private fun BoxScope.QuickMenu(
     onQuit: () -> Unit,
     onSaveState: () -> Unit = {},
     onLoadState: () -> Unit = {},
+    onRewind: () -> Unit = {},
+    onScreenshot: () -> Unit = {},
+    onSlots: (() -> Unit)? = null,
 ) {
     Box(
         Modifier
@@ -298,7 +317,16 @@ private fun BoxScope.QuickMenu(
         Spacer(Modifier.height(10.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             MenuTile(Icons.Filled.FastForward, PulsarYellow, if (fastForward) "Fast Fwd On" else "Fast Fwd Off", Modifier.weight(1f), onClick = onToggleFf)
-            MenuTile(Icons.Filled.CameraAlt, Color.White, "Screenshot", Modifier.weight(1f)) {}
+            MenuTile(Icons.Filled.CameraAlt, Color.White, "Screenshot", Modifier.weight(1f), onClick = onScreenshot)
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            MenuTile(Icons.Filled.History, PulsarYellow, "Rewind 2s", Modifier.weight(1f), onClick = onRewind)
+            if (onSlots != null) {
+                MenuTile(Icons.Filled.Save, PulsarTeal, "Slots…", Modifier.weight(1f), onClick = onSlots)
+            } else {
+                Spacer(Modifier.weight(1f))
+            }
         }
         Spacer(Modifier.height(12.dp))
         Row(

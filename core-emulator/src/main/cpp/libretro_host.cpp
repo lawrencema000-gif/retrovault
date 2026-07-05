@@ -76,13 +76,22 @@ AudioOut g_audio;
 std::string g_corePath, g_gamePath, g_systemDir, g_saveDir;
 bool g_supportsNoGame = false;
 double g_coreFps = 60.0;
-uint64_t g_audioFrames = 0;
+std::atomic<uint64_t> g_audioFrames{0}; // produced by the core (fast-forward observable)
 int g_audioSourceRate = 0;
 
 std::atomic<bool> g_running{false};
 std::atomic<bool> g_stopRequested{false};
 std::atomic<bool> g_paused{false};
 std::atomic<bool> g_swappyEnabled{false};
+
+// Speed control: percent of realtime (100 = 1×). ≥200 batches N retro_runs per presented
+// frame (intermediate frames are neither presented nor fed to audio — SKIP_FLIP battery
+// mode by construction); 50 = slow-mo (core runs on alternate iterations).
+std::atomic<int> g_speedPct{100};
+// While true, audio_batch_cb drops samples (non-final runs of a fast-forward batch).
+bool g_ffMuteAudio = false; // run-loop thread only
+// RetroAchievements-ready interlock: while set, FF/slow-mo/rewind are refused.
+std::atomic<bool> g_hardcoreActive{false};
 
 // input snapshot (written by UI/gamepad threads via nativeSetInput)
 std::atomic<int32_t> g_buttons{0};
@@ -106,15 +115,38 @@ constexpr CoreVarOverride kCoreVariableOverrides[] = {
     { "ppsspp_internal_resolution", "480x272" },
 };
 
-// Save/load-state ops: posted from any thread, executed by the run-loop thread between
-// frames (retro_serialize/unserialize must run on the emu/GL thread — PPSSPP requires it).
+// Run-loop ops: posted from any thread, executed by the run-loop thread between frames
+// (retro_serialize/unserialize must run on the emu/GL thread — PPSSPP requires it).
+enum class OpType { SAVE, LOAD, SCREENSHOT, REWIND_STEP };
 std::mutex g_opMutex;
 std::condition_variable g_opCv;
 std::atomic<bool> g_opPending{false};
-bool g_opIsSave = false;
+OpType g_opType = OpType::SAVE;
 std::string g_opStatePath, g_opFramePath;
 bool g_opDone = true;
 bool g_opOk = false;
+
+// Rewind: interval snapshots into an in-RAM ring, budgeted by bytes. Owned by the run-loop
+// thread; config + count cross threads via atomics.
+struct RewindRing {
+    std::vector<std::vector<uint8_t>> slots;
+    size_t head = 0;   // next write position
+    size_t count = 0;  // valid snapshots
+    uint64_t lastSnapFrame = 0;
+    int intervalFrames = 0;
+    bool enabled = false;
+};
+RewindRing g_rewind;
+std::atomic<long long> g_rewindReqBudgetBytes{0}; // 0 = disable
+std::atomic<int> g_rewindReqInterval{120};
+std::atomic<bool> g_rewindConfigPending{false};
+std::atomic<int> g_rewindCount{0};
+
+// Settle gate: after an unserialize (load/rewind), the core must run a few frames before the
+// next op is serviced — PPSSPP's threaded GL renderer deadlocks on back-to-back state ops.
+// Wall-clock fallback keeps ops flowing when frames are frozen (paused/backgrounded).
+uint64_t g_lastRestoreFrame = 0;   // run-loop thread only
+int64_t g_lastRestoreTimeNs = 0;
 
 int64_t monotonicNowNs() {
     timespec ts{};
@@ -271,7 +303,8 @@ void video_cb(const void* data, unsigned width, unsigned height, size_t pitch) {
 }
 
 size_t audio_batch_cb(const int16_t* data, size_t frames) {
-    g_audioFrames += frames;
+    g_audioFrames.fetch_add(frames);
+    if (g_ffMuteAudio) return frames; // fast-forward batch: only the final run is audible
     if (data && frames) g_audio.writeFrames(data, frames);
     return frames;
 }
@@ -418,22 +451,115 @@ bool doLoadStateOnThread(const std::string& statePath) {
     if (!ok) return false;
     ok = g_core.retro_unserialize(buf.data(), buf.size());
     LOGI("state load %s: %s", statePath.c_str(), ok ? "ok" : "FAILED");
+    if (ok) {
+        g_lastRestoreFrame = g_video.stats.framesPresented.load();
+        g_lastRestoreTimeNs = monotonicNowNs();
+    }
     return ok;
 }
 
-/** Run-loop thread: execute a posted state op, then wake the waiting caller. */
+bool doScreenshotOnThread(const std::string& framePath) {
+    std::vector<uint8_t> rgba;
+    unsigned w = 0, h = 0;
+    if (!g_video.captureFrame(rgba, w, h)) return false;
+    std::vector<uint8_t> blob(8 + rgba.size());
+    int32_t wh[2] = { (int32_t)w, (int32_t)h };
+    memcpy(blob.data(), wh, 8);
+    memcpy(blob.data() + 8, rgba.data(), rgba.size());
+    return writeFileAtomic(framePath, blob.data(), blob.size());
+}
+
+// ---------------------------------------------------------------- rewind (run-loop thread)
+
+void applyRewindConfig() {
+    if (!g_rewindConfigPending.exchange(false)) return;
+    long long budget = g_rewindReqBudgetBytes.load();
+    g_rewind = RewindRing{}; // drop old snapshots
+    if (budget <= 0 || !g_core.retro_serialize_size) {
+        g_rewindCount = 0;
+        LOGI("rewind disabled");
+        return;
+    }
+    size_t snapSize = g_core.retro_serialize_size();
+    if (snapSize == 0) {
+        g_rewindCount = 0;
+        LOGW("rewind unavailable: serialize_size = 0");
+        return;
+    }
+    size_t slots = (size_t)(budget / (long long)snapSize);
+    if (slots < 1) slots = 1;
+    if (slots > 120) slots = 120;
+    g_rewind.slots.resize(slots);
+    g_rewind.intervalFrames = g_rewindReqInterval.load();
+    if (g_rewind.intervalFrames < 10) g_rewind.intervalFrames = 10;
+    g_rewind.enabled = true;
+    g_rewind.lastSnapFrame = g_video.stats.framesPresented.load();
+    LOGI("rewind enabled: %zu slots x %zu bytes, every %d frames",
+         slots, snapSize, g_rewind.intervalFrames);
+}
+
+void maybeTakeRewindSnapshot() {
+    if (!g_rewind.enabled || g_hardcoreActive.load()) return;
+    uint64_t now = g_video.stats.framesPresented.load();
+    if (now - g_rewind.lastSnapFrame < (uint64_t)g_rewind.intervalFrames) return;
+    g_rewind.lastSnapFrame = now;
+    size_t n = g_core.retro_serialize_size();
+    if (n == 0) { LOGW("rewind snapshot: serialize_size 0"); return; }
+    auto& slot = g_rewind.slots[g_rewind.head];
+    slot.resize(n);
+    if (!g_core.retro_serialize(slot.data(), n)) {
+        LOGW("rewind snapshot: retro_serialize failed at frame %llu", (unsigned long long)now);
+        return;
+    }
+    g_rewind.head = (g_rewind.head + 1) % g_rewind.slots.size();
+    if (g_rewind.count < g_rewind.slots.size()) g_rewind.count++;
+    g_rewindCount = (int)g_rewind.count;
+    LOGI("rewind snapshot %zu/%zu at frame %llu", g_rewind.count, g_rewind.slots.size(),
+         (unsigned long long)now);
+}
+
+bool doRewindStepOnThread() {
+    if (!g_rewind.enabled || g_rewind.count == 0 || g_hardcoreActive.load()) return false;
+    g_rewind.head = (g_rewind.head + g_rewind.slots.size() - 1) % g_rewind.slots.size();
+    g_rewind.count--;
+    g_rewindCount = (int)g_rewind.count;
+    auto& slot = g_rewind.slots[g_rewind.head];
+    bool ok = !slot.empty() && g_core.retro_unserialize &&
+        g_core.retro_unserialize(slot.data(), slot.size());
+    // Snapshots resume from the restored point.
+    g_rewind.lastSnapFrame = g_video.stats.framesPresented.load();
+    if (ok) {
+        g_lastRestoreFrame = g_video.stats.framesPresented.load();
+        g_lastRestoreTimeNs = monotonicNowNs();
+    }
+    return ok;
+}
+
+/** Run-loop thread: execute a posted op, then wake the waiting caller. */
 void processStateOp() {
     if (!g_opPending.load(std::memory_order_acquire)) return;
+    // Settle gate: give the core ~12 frames (or 1s wall-clock when frozen) after a restore
+    // before the next op touches its state. The op stays pending; the caller keeps waiting.
+    if (g_lastRestoreTimeNs != 0) {
+        uint64_t framesSince = g_video.stats.framesPresented.load() - g_lastRestoreFrame;
+        int64_t nsSince = monotonicNowNs() - g_lastRestoreTimeNs;
+        if (framesSince < 12 && nsSince < 1000000000LL) return;
+    }
     std::string statePath, framePath;
-    bool isSave;
+    OpType type;
     {
         std::lock_guard<std::mutex> lk(g_opMutex);
         statePath = g_opStatePath;
         framePath = g_opFramePath;
-        isSave = g_opIsSave;
+        type = g_opType;
     }
-    bool ok = isSave ? doSaveStateOnThread(statePath, framePath)
-                     : doLoadStateOnThread(statePath);
+    bool ok = false;
+    switch (type) {
+        case OpType::SAVE: ok = doSaveStateOnThread(statePath, framePath); break;
+        case OpType::LOAD: ok = doLoadStateOnThread(statePath); break;
+        case OpType::SCREENSHOT: ok = doScreenshotOnThread(framePath); break;
+        case OpType::REWIND_STEP: ok = doRewindStepOnThread(); break;
+    }
     {
         std::lock_guard<std::mutex> lk(g_opMutex);
         g_opOk = ok;
@@ -525,6 +651,12 @@ Java_com_retrovault_emulator_LibretroBridge_nativeStartSession(
     // Reset per-session state so back-to-back sessions in one process start clean.
     g_stopRequested = false;
     g_paused = false;
+    g_speedPct = 100;
+    g_hardcoreActive = false;
+    g_rewindReqBudgetBytes = 0;
+    g_rewindConfigPending = true; // run loop clears any previous session's ring
+    g_lastRestoreFrame = 0;
+    g_lastRestoreTimeNs = 0;
     g_supportsNoGame = false;
     g_coreFps = 60.0;
     g_audioFrames = 0;
@@ -631,9 +763,25 @@ Java_com_retrovault_emulator_LibretroBridge_nativeRunLoop(JNIEnv*, jobject) {
         }
 
         g_video.callContextResetOnce();
-        g_audio.updateRateControl();
-        g_core.retro_run();
+        applyRewindConfig();
+
+        // Speed: ≥200% batches N runs per presented frame (only the last is audible/shown);
+        // 50% slow-mo runs the core on alternate iterations.
+        const int speed = g_hardcoreActive.load() ? 100 : g_speedPct.load();
+        int runs = speed >= 200 ? speed / 100 : 1;
+        static bool slowmoSkip = false;
+        if (speed == 50) {
+            slowmoSkip = !slowmoSkip;
+            if (slowmoSkip) runs = 0;
+        }
+        for (int i = 0; i < runs; i++) {
+            g_ffMuteAudio = (i < runs - 1);
+            g_audio.updateRateControl();
+            g_core.retro_run();
+        }
+        g_ffMuteAudio = false;
         g_video.present();
+        if (speed == 100) maybeTakeRewindSnapshot();
         processStateOp();
 
         if (!g_audio.isRunning() && g_audioSourceRate > 0 &&
@@ -662,6 +810,8 @@ Java_com_retrovault_emulator_LibretroBridge_nativeRunLoop(JNIEnv*, jobject) {
     // fail anything that raced in after it.
     processStateOp();
     failPendingStateOp();
+    g_rewind = RewindRing{}; // release snapshot RAM
+    g_rewindCount = 0;
     // Teardown order matters: audio stops first (its producer is the core thread), then
     // context_destroy fires while the core is still loaded and the GL context is current;
     // only then unload/dlclose the core; EGL goes down last.
@@ -742,6 +892,13 @@ Java_com_retrovault_emulator_LibretroBridge_nativeAudioFramesOut(JNIEnv*, jobjec
     return (jlong)g_audio.framesConsumed();
 }
 
+// Audio frames PRODUCED by the core (counts muted FF batches too) — the observable that
+// scales with emulation speed, unlike framesPresented which stays at the display rate.
+JNIEXPORT jlong JNICALL
+Java_com_retrovault_emulator_LibretroBridge_nativeAudioFramesProduced(JNIEnv*, jobject) {
+    return (jlong)g_audioFrames.load();
+}
+
 JNIEXPORT jlong JNICALL
 Java_com_retrovault_emulator_LibretroBridge_nativeAudioUnderruns(JNIEnv*, jobject) {
     return (jlong)g_audio.underrunFills();
@@ -768,24 +925,27 @@ Java_com_retrovault_emulator_LibretroBridge_nativeSetBtFriendlyAudio(JNIEnv*, jo
     g_audio.setBluetoothFriendly(bt == JNI_TRUE);
 }
 
-// ---- save states (P8): blocking ops executed by the run-loop thread ----
+// ---- run-loop ops (P8/P10): blocking, executed by the run-loop thread ----
 
-static jboolean postStateOp(JNIEnv* env, bool isSave, jstring statePath, jstring framePath) {
+static jboolean postOp(JNIEnv* env, OpType type, jstring statePath, jstring framePath) {
     if (!g_running.load()) return JNI_FALSE;
-    const char* sp = env->GetStringUTFChars(statePath, nullptr);
-    std::string statePathStr(sp ? sp : "");
-    env->ReleaseStringUTFChars(statePath, sp);
-    std::string framePathStr;
-    if (framePath) {
-        const char* fp = env->GetStringUTFChars(framePath, nullptr);
-        framePathStr = fp ? fp : "";
-        env->ReleaseStringUTFChars(framePath, fp);
+    auto grab = [&](jstring s) -> std::string {
+        if (!s) return {};
+        const char* c = env->GetStringUTFChars(s, nullptr);
+        std::string out(c ? c : "");
+        env->ReleaseStringUTFChars(s, c);
+        return out;
+    };
+    std::string statePathStr = grab(statePath);
+    std::string framePathStr = grab(framePath);
+    if (type == OpType::SAVE || type == OpType::LOAD) {
+        if (statePathStr.empty()) return JNI_FALSE;
     }
-    if (statePathStr.empty()) return JNI_FALSE;
+    if (type == OpType::SCREENSHOT && framePathStr.empty()) return JNI_FALSE;
 
     std::unique_lock<std::mutex> lk(g_opMutex);
     if (g_opPending.load()) return JNI_FALSE; // one op at a time
-    g_opIsSave = isSave;
+    g_opType = type;
     g_opStatePath = statePathStr;
     g_opFramePath = framePathStr;
     g_opDone = false;
@@ -799,12 +959,62 @@ static jboolean postStateOp(JNIEnv* env, bool isSave, jstring statePath, jstring
 JNIEXPORT jboolean JNICALL
 Java_com_retrovault_emulator_LibretroBridge_nativeSaveState(
     JNIEnv* env, jobject, jstring statePath, jstring rawFramePath) {
-    return postStateOp(env, true, statePath, rawFramePath);
+    return postOp(env, OpType::SAVE, statePath, rawFramePath);
 }
 
 JNIEXPORT jboolean JNICALL
 Java_com_retrovault_emulator_LibretroBridge_nativeLoadState(JNIEnv* env, jobject, jstring statePath) {
-    return postStateOp(env, false, statePath, nullptr);
+    return postOp(env, OpType::LOAD, statePath, nullptr);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_retrovault_emulator_LibretroBridge_nativeScreenshot(JNIEnv* env, jobject, jstring rawFramePath) {
+    return postOp(env, OpType::SCREENSHOT, nullptr, rawFramePath);
+}
+
+// ---- speed / rewind / hardcore (P10) ----
+
+JNIEXPORT void JNICALL
+Java_com_retrovault_emulator_LibretroBridge_nativeSetSpeed(JNIEnv*, jobject, jint pct) {
+    if (g_hardcoreActive.load()) { g_speedPct = 100; return; }
+    int v = pct;
+    if (v != 50 && v < 100) v = 100;
+    if (v > 500) v = 500;
+    g_speedPct = v;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_retrovault_emulator_LibretroBridge_nativeGetSpeed(JNIEnv*, jobject) {
+    return g_speedPct.load();
+}
+
+JNIEXPORT void JNICALL
+Java_com_retrovault_emulator_LibretroBridge_nativeSetRewind(
+    JNIEnv*, jobject, jlong budgetBytes, jint intervalFrames) {
+    g_rewindReqBudgetBytes = (long long)budgetBytes;
+    g_rewindReqInterval = intervalFrames;
+    g_rewindConfigPending = true;
+}
+
+JNIEXPORT jint JNICALL
+Java_com_retrovault_emulator_LibretroBridge_nativeRewindCount(JNIEnv*, jobject) {
+    return g_rewindCount.load();
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_retrovault_emulator_LibretroBridge_nativeRewindStep(JNIEnv* env, jobject) {
+    return postOp(env, OpType::REWIND_STEP, nullptr, nullptr);
+}
+
+JNIEXPORT void JNICALL
+Java_com_retrovault_emulator_LibretroBridge_nativeSetHardcore(JNIEnv*, jobject, jboolean on) {
+    g_hardcoreActive = on == JNI_TRUE;
+    if (on == JNI_TRUE) g_speedPct = 100;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_retrovault_emulator_LibretroBridge_nativeIsHardcore(JNIEnv*, jobject) {
+    return g_hardcoreActive.load() ? JNI_TRUE : JNI_FALSE;
 }
 
 } // extern "C"

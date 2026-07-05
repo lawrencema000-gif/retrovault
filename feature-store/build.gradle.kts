@@ -21,6 +21,7 @@ dependencies {
     implementation(project(":core-ui"))
     implementation(project(":data-supabase"))
     implementation(project(":data-download"))
+    implementation(project(":data-saves"))
     implementation(project(":data-billing"))
 
     implementation(platform(libs.androidx.compose.bom))

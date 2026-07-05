@@ -23,6 +23,23 @@
 > pass-through); SAF-tree scan + ISO9660 unverified without a device/real ISO; wiring imported
 > games into the Library UI grid lands with the installed-games section.
 >
+> ✅ **P10 done (2026-07-05):** The convenience layer. **Fast-forward** (2×–5× via batched
+> `retro_run`s per presented frame — intermediate frames neither shown nor audible = SKIP_FLIP
+> battery mode by construction; 50% slow-mo; proven by audio-frames-produced more than
+> doubling at 3×). **Rewind**: in-RAM snapshot ring budgeted by bytes (256MB default → ~6
+> PSP snapshots @ 2s intervals), take/step/drain/disable all run-loop ops. **Screenshot** op
+> (reuses P8 capture → full-res PNG under `screenshots/`). **Undo-save** (previous state
+> backed up before overwrite) + **undo-load** (pre-load snapshot) in `SaveStateManager`.
+> **Slot manager sheet** (auto + 4 slots, thumbnails + timestamps, save/load/delete/undo).
+> **"Continue"** as the detail-screen primary CTA when an auto-save exists → auto-restores
+> the auto slot after boot (kill app mid-game → resume in 2 taps). **`hardcoreActive`
+> interlock** (RA-ready): pins speed at 100, refuses rewind. **🔧 Robustness fix found by
+> testing: PPSSPP's threaded GL renderer deadlocks on back-to-back state ops — added a settle
+> gate (next op deferred ~12 frames / 1s after any restore) so hammering load/rewind can
+> never wedge the emulator.** P10Test: FF output ratio + hardcore pin; on the real game:
+> ring fills → paced steps restore → hardcore refuses → disable clears; undo-save byte-exact
+> restore; undo-load round-trip — **OK (2)**; full suite **OK (28 tests)**.
+>
 > ✅ **P9 done (2026-07-05):** External gamepad support (emulator-provable portion). Bundled
 > **SDL `gamecontrollerdb.txt`** (zlib, 297 Android rows) with `ControllerDb`: vid/pid match
 > (extracted from the SDL GUID hex), SDL element translation (bN→standard SDL button order→

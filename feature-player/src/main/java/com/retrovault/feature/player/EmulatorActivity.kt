@@ -97,6 +97,23 @@ class EmulatorActivity : ComponentActivity() {
             saveStates = SaveStateManager(applicationContext, gameKey)
         }
 
+        // Rewind ring: 256MB budget, snapshot every 2s (PSP states ≈ 42MB → ~6 snapshots =
+        // ~12s of rewind; tiny cores get minutes). Budget becomes a setting at P11.
+        session.enableRewind(256L * 1024 * 1024, intervalFrames = 120)
+
+        // "Continue" from the library: restore the auto-save once the game has booted.
+        if (intent.getBooleanExtra(EXTRA_RESUME, false) && saveStates != null) {
+            lifecycleScope.launch {
+                val deadline = System.currentTimeMillis() + 30_000
+                while (System.currentTimeMillis() < deadline &&
+                    LibretroBridge.nativeFramesPresented() < 60
+                ) {
+                    kotlinx.coroutines.delay(150)
+                }
+                saveStates?.load(SaveStateManager.AUTO_SLOT)
+            }
+        }
+
         // Hotplug: pad connects → hide touch overlay; the pad disconnecting → auto-pause so
         // a dead battery never loses a run.
         hotplug = HotplugMonitor(
@@ -135,6 +152,14 @@ class EmulatorActivity : ComponentActivity() {
                     menuRequests = menuRequests,
                     onSaveState = { quickSlotOp(save = true) },
                     onLoadState = { quickSlotOp(save = false) },
+                    saveStates = saveStates,
+                    onScreenshot = {
+                        lifecycleScope.launch {
+                            com.retrovault.saves.Screenshots.capture(
+                                applicationContext, "${gameKey ?: "game"}-${System.currentTimeMillis()}"
+                            )
+                        }
+                    },
                 )
             }
         }
@@ -181,6 +206,9 @@ class EmulatorActivity : ComponentActivity() {
         /** Test/debug hook: load this core .so (by file name) instead of the system's core. */
         const val EXTRA_CORE_OVERRIDE = "coreOverride"
 
+        /** Restore the auto-save slot once the game boots ("Continue" library action). */
+        const val EXTRA_RESUME = "resumeAuto"
+
         private const val QUICK_SLOT = 1
 
         fun intent(
@@ -189,12 +217,14 @@ class EmulatorActivity : ComponentActivity() {
             title: String,
             system: GameSystem,
             gamePath: String? = null,
+            resume: Boolean = false,
         ): Intent =
             Intent(context, EmulatorActivity::class.java).apply {
                 putExtra(EXTRA_GAME_ID, gameId)
                 putExtra(EXTRA_TITLE, title)
                 putExtra(EXTRA_SYSTEM, system.name)
                 putExtra(EXTRA_GAME_PATH, gamePath)
+                putExtra(EXTRA_RESUME, resume)
             }
     }
 }

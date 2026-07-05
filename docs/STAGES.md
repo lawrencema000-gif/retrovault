@@ -23,6 +23,26 @@
 > pass-through); SAF-tree scan + ISO9660 unverified without a device/real ISO; wiring imported
 > games into the Library UI grid lands with the installed-games section.
 >
+> ✅ **P9 done (2026-07-05):** External gamepad support (emulator-provable portion). Bundled
+> **SDL `gamecontrollerdb.txt`** (zlib, 297 Android rows) with `ControllerDb`: vid/pid match
+> (extracted from the SDL GUID hex), SDL element translation (bN→standard SDL button order→
+> Android keycodes; aN→device's non-hat motion ranges sorted; hN.M→HAT axes; `~` inversion).
+> **Mapping pipeline: user remap > controller DB > Android default** (`RemapStore.resolve`,
+> per-device by `InputDevice.descriptor`, JSON-persisted). `GamepadMapper` rewritten profile-
+> driven: per-device profile cache, multi-bind, axis-edge detection, **analog tuning** (radial/
+> axial deadzone + inverse-deadzone floor + response-curve exponent), **virtkeys** (MENU/SAVE_
+> STATE/LOAD_STATE/FF/SCREENSHOT) routed off the game path. `BindWizard` press-to-bind state
+> machine (capture/skip/merge-over-base). `HotplugMonitor`: pad connect → touch overlay hides
+> + profiles invalidated; last pad disconnect → **native pause** (new `nativeSetPaused`; frozen
+> loop still services save/load ops) + "tap to resume" scrim. Quick menu Save/Load State tiles
+> now functional (slot 1 quick-save; gamepad MENU virtkey opens the menu). GamepadP9Test —
+> db parse/translate (incl. inverted axis), bundled-db load, **remap persists across store
+> instances** (the "remapped clone persists" criterion), wizard capture+merge, custom profile +
+> virtkey → native snapshot, tuning math, pause freeze/resume — **OK (7)**; full suite **OK
+> (26 tests)**. Device-feel criteria (Xbox/DS instant, real hotplug, dpad-navigable frontend)
+> → P5 device session. Deferred: bind-wizard Compose screen + calibration plot (P11 settings
+> UI); FF/screenshot virtkeys act at P10.
+>
 > ✅ **P8 done (2026-07-05) — + a MAJOR latent bug fixed:** Save states. Native `retro_serialize`/
 > `unserialize` ops are **posted from any thread but executed on the run-loop thread between
 > frames** (the only thread safe for PPSSPP's GL state), caller blocks on a condvar (20s cap);

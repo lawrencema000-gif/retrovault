@@ -78,9 +78,19 @@ fun PlayerScreen(
     session: EmulatorSession,
     inputHub: InputHub,
     onQuit: () -> Unit,
+    gamepadConnected: Boolean = false,
+    pausedExternally: Boolean = false,
+    onResumeExternal: () -> Unit = {},
+    menuRequests: Int = 0,
+    onSaveState: () -> Unit = {},
+    onLoadState: () -> Unit = {},
 ) {
     var showMenu by remember { mutableStateOf(false) }
     var fastForward by remember { mutableStateOf(false) }
+    // Gamepad MENU virtkey opens the quick menu (counter bump per press).
+    androidx.compose.runtime.LaunchedEffect(menuRequests) {
+        if (menuRequests > 0) showMenu = true
+    }
     val running = session.status == CoreStatus.RUNNING
     val ctx = LocalContext.current
     val statusMsg = when {
@@ -122,10 +132,14 @@ fun PlayerScreen(
                 },
                 modifier = Modifier.fillMaxSize()
             )
-            AndroidView(
-                factory = { context -> TouchOverlayView(context, inputHub) },
-                modifier = Modifier.fillMaxSize()
-            )
+            // Touch controls only while no physical pad is connected (plan: pad connect →
+            // overlay hides; disconnect → it returns).
+            if (!gamepadConnected) {
+                AndroidView(
+                    factory = { context -> TouchOverlayView(context, inputHub) },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
             DisposableEffect(Unit) {
                 onDispose {
                     LibretroBridge.nativeSetVideoSurface(null)
@@ -201,8 +215,37 @@ fun PlayerScreen(
                 fastForward = fastForward,
                 onToggleFf = { fastForward = !fastForward },
                 onDismiss = { showMenu = false },
-                onQuit = { session.stop(); onQuit() }
+                onQuit = { session.stop(); onQuit() },
+                onSaveState = { onSaveState(); showMenu = false },
+                onLoadState = { onLoadState(); showMenu = false },
             )
+        }
+
+        // Auto-pause scrim (controller disconnected mid-game).
+        if (pausedExternally) {
+            Column(
+                Modifier
+                    .matchParentSize()
+                    .background(Color(0xCC030508))
+                    .clickable(onClick = onResumeExternal),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    Icons.Filled.SportsEsports, null,
+                    tint = PulsarYellow, modifier = Modifier.size(42.dp)
+                )
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "PAUSED",
+                    fontFamily = ChakraPetch, fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp, letterSpacing = 4.sp, color = PulsarText
+                )
+                Text(
+                    "Controller disconnected · tap to resume",
+                    fontSize = 12.sp, color = PulsarTextDim
+                )
+            }
         }
     }
 }
@@ -227,6 +270,8 @@ private fun BoxScope.QuickMenu(
     onToggleFf: () -> Unit,
     onDismiss: () -> Unit,
     onQuit: () -> Unit,
+    onSaveState: () -> Unit = {},
+    onLoadState: () -> Unit = {},
 ) {
     Box(
         Modifier
@@ -247,8 +292,8 @@ private fun BoxScope.QuickMenu(
         Text("Quick menu", fontSize = 11.sp, color = PulsarTextDim)
         Spacer(Modifier.height(14.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            MenuTile(Icons.Filled.Save, PulsarPrimary, "Save State", Modifier.weight(1f)) {}
-            MenuTile(Icons.Filled.History, PulsarTeal, "Load State", Modifier.weight(1f)) {}
+            MenuTile(Icons.Filled.Save, PulsarPrimary, "Save State", Modifier.weight(1f), onClick = onSaveState)
+            MenuTile(Icons.Filled.History, PulsarTeal, "Load State", Modifier.weight(1f), onClick = onLoadState)
         }
         Spacer(Modifier.height(10.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {

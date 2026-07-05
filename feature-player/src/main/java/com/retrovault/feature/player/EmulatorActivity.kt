@@ -8,17 +8,26 @@ import android.view.MotionEvent
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.lifecycleScope
 import com.retrovault.core.model.GameSystem
 import com.retrovault.core.ui.theme.PulsarTheme
 import com.retrovault.emulator.CoreStatus
 import com.retrovault.emulator.EmulatorSession
 import com.retrovault.emulator.LibretroBridge
 import com.retrovault.input.GamepadMapper
+import com.retrovault.input.HotplugMonitor
 import com.retrovault.input.InputHub
+import com.retrovault.input.RemapStore
+import com.retrovault.input.VirtKey
 import com.retrovault.saves.SaveStateManager
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 
 /** Full-screen, landscape gameplay host. Runs in the :emu process (see manifest). */
@@ -26,8 +35,15 @@ class EmulatorActivity : ComponentActivity() {
 
     private val session = EmulatorSession()
     private val inputHub = InputHub()
-    private val gamepad = GamepadMapper(inputHub)
+    private lateinit var remapStore: RemapStore
+    private lateinit var gamepad: GamepadMapper
+    private var hotplug: HotplugMonitor? = null
     private var saveStates: SaveStateManager? = null
+
+    // Player UI state driven from outside Compose (hotplug, virtkeys).
+    private var gamepadConnected by mutableStateOf(false)
+    private var pausedByHotplug by mutableStateOf(false)
+    private var menuRequests by mutableIntStateOf(0)
 
     // External gamepads dispatch through the Activity — captured here even with the
     // Compose chrome present, then written into the same native snapshot as touch.
@@ -50,6 +66,13 @@ class EmulatorActivity : ComponentActivity() {
             hide(WindowInsetsCompat.Type.systemBars())
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
+
+        remapStore = RemapStore(applicationContext)
+        gamepad = GamepadMapper(
+            hub = inputHub,
+            profileResolver = { device -> remapStore.resolve(applicationContext, device) },
+            onVirtKey = ::onVirtKey,
+        )
 
         val title = intent.getStringExtra(EXTRA_TITLE) ?: "Game"
         val system = runCatching { GameSystem.valueOf(intent.getStringExtra(EXTRA_SYSTEM).orEmpty()) }
@@ -74,6 +97,27 @@ class EmulatorActivity : ComponentActivity() {
             saveStates = SaveStateManager(applicationContext, gameKey)
         }
 
+        // Hotplug: pad connects → hide touch overlay; the pad disconnecting → auto-pause so
+        // a dead battery never loses a run.
+        hotplug = HotplugMonitor(
+            this,
+            onGamepadConnected = {
+                gamepadConnected = true
+                gamepad.invalidateProfiles()
+            },
+            onGamepadDisconnected = {
+                gamepad.invalidateProfiles()
+                val stillConnected = hotplug?.anyGamepadConnected() == true
+                if (!stillConnected && gamepadConnected) {
+                    gamepadConnected = false
+                    if (session.status == CoreStatus.RUNNING) {
+                        session.paused = true
+                        pausedByHotplug = true
+                    }
+                }
+            },
+        ).also { it.start() }
+
         setContent {
             PulsarTheme {
                 PlayerScreen(
@@ -82,17 +126,46 @@ class EmulatorActivity : ComponentActivity() {
                     session = session,
                     inputHub = inputHub,
                     onQuit = { finish() },
+                    gamepadConnected = gamepadConnected,
+                    pausedExternally = pausedByHotplug,
+                    onResumeExternal = {
+                        session.paused = false
+                        pausedByHotplug = false
+                    },
+                    menuRequests = menuRequests,
+                    onSaveState = { quickSlotOp(save = true) },
+                    onLoadState = { quickSlotOp(save = false) },
                 )
             }
         }
     }
 
+    private fun onVirtKey(key: VirtKey, down: Boolean) {
+        if (!down) return
+        when (key) {
+            VirtKey.MENU -> menuRequests++
+            VirtKey.SAVE_STATE -> quickSlotOp(save = true)
+            VirtKey.LOAD_STATE -> quickSlotOp(save = false)
+            VirtKey.FAST_FORWARD -> Unit // P10
+            VirtKey.SCREENSHOT -> Unit   // P10
+        }
+    }
+
+    private fun quickSlotOp(save: Boolean) {
+        val mgr = saveStates ?: return
+        lifecycleScope.launch {
+            if (save) mgr.save(QUICK_SLOT) else mgr.load(QUICK_SLOT)
+        }
+    }
+
     override fun onDestroy() {
+        hotplug?.stop()
         // Auto-save before teardown: the run loop is still alive (backgrounded branch
         // executes state ops even with the Surface detached). Blocking is intentional —
         // the state must hit disk before the process can be killed.
         val mgr = saveStates
         if (mgr != null && session.status == CoreStatus.RUNNING) {
+            session.paused = false // a frozen loop still services ops, but never save mid-pause transition
             runBlocking { runCatching { mgr.save(SaveStateManager.AUTO_SLOT) } }
         }
         session.stop()
@@ -107,6 +180,8 @@ class EmulatorActivity : ComponentActivity() {
 
         /** Test/debug hook: load this core .so (by file name) instead of the system's core. */
         const val EXTRA_CORE_OVERRIDE = "coreOverride"
+
+        private const val QUICK_SLOT = 1
 
         fun intent(
             context: Context,

@@ -81,6 +81,7 @@ int g_audioSourceRate = 0;
 
 std::atomic<bool> g_running{false};
 std::atomic<bool> g_stopRequested{false};
+std::atomic<bool> g_paused{false};
 std::atomic<bool> g_swappyEnabled{false};
 
 // input snapshot (written by UI/gamepad threads via nativeSetInput)
@@ -523,6 +524,7 @@ Java_com_retrovault_emulator_LibretroBridge_nativeStartSession(
     g_saveDir = grab(saveDir);
     // Reset per-session state so back-to-back sessions in one process start clean.
     g_stopRequested = false;
+    g_paused = false;
     g_supportsNoGame = false;
     g_coreFps = 60.0;
     g_audioFrames = 0;
@@ -612,13 +614,14 @@ Java_com_retrovault_emulator_LibretroBridge_nativeRunLoop(JNIEnv*, jobject) {
     while (!g_stopRequested.load()) {
         g_video.applyPendingWindow();
 
-        if (!g_video.hasWindowSurface()) {
-            // Backgrounded: keep the core alive but paused; silence audio; don't burn CPU.
+        if (!g_video.hasWindowSurface() || g_paused.load()) {
+            // Backgrounded or explicitly paused (menu open / gamepad unplugged): keep the
+            // core alive but frozen; silence audio; don't burn CPU.
             if (g_audio.isRunning()) {
                 g_audio.stop();
                 resumeFrameMark = g_video.stats.framesPresented.load();
             }
-            processStateOp(); // auto-save-on-exit runs here, after the Surface is gone
+            processStateOp(); // save/load still serviced while frozen (auto-save, menu saves)
             std::this_thread::sleep_for(std::chrono::milliseconds(15));
             nextFrame = std::chrono::steady_clock::now();
             continue;
@@ -674,6 +677,16 @@ Java_com_retrovault_emulator_LibretroBridge_nativeRunLoop(JNIEnv*, jobject) {
 JNIEXPORT void JNICALL
 Java_com_retrovault_emulator_LibretroBridge_nativeRequestStop(JNIEnv*, jobject) {
     g_stopRequested = true;
+}
+
+JNIEXPORT void JNICALL
+Java_com_retrovault_emulator_LibretroBridge_nativeSetPaused(JNIEnv*, jobject, jboolean paused) {
+    g_paused = paused == JNI_TRUE;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_retrovault_emulator_LibretroBridge_nativeIsPaused(JNIEnv*, jobject) {
+    return g_paused.load() ? JNI_TRUE : JNI_FALSE;
 }
 
 JNIEXPORT jboolean JNICALL

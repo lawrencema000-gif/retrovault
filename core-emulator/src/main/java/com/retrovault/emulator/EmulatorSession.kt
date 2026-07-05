@@ -74,6 +74,13 @@ class EmulatorSession {
         LibretroBridge.nativeSetInput(0, input.buttons, input.analogLX, input.analogLY, eventTimeNs)
     }
 
+    /** Freeze/unfreeze emulation in place (menu open, gamepad unplugged). */
+    var paused: Boolean
+        get() = LibretroBridge.available && LibretroBridge.nativeIsPaused()
+        set(value) {
+            if (LibretroBridge.available) LibretroBridge.nativeSetPaused(value)
+        }
+
     /** Blocking save/load of full core state (executed on the run-loop thread; see bridge). */
     fun saveState(statePath: String, rawFramePath: String? = null): Boolean =
         status == CoreStatus.RUNNING && LibretroBridge.nativeSaveState(statePath, rawFramePath)

@@ -48,6 +48,14 @@ object LibretroBridge {
     external fun nativeIsRunning(): Boolean
 
     /**
+     * Freeze/unfreeze emulation without tearing anything down (menu open, gamepad unplugged).
+     * While paused the core stops running frames, audio stops, and save/load-state ops are
+     * still serviced.
+     */
+    external fun nativeSetPaused(paused: Boolean)
+    external fun nativeIsPaused(): Boolean
+
+    /**
      * Push the current input state for a port (RetroPad bitmask + left-analog axes).
      * [eventTimeNs] = the originating Android input event time (uptime-based, ns) for
      * input→frame latency instrumentation; pass 0 when not applicable.

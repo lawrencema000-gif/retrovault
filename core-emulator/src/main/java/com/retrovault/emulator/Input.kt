@@ -14,6 +14,10 @@ object RetroPad {
     const val X = 1 shl 9
     const val L = 1 shl 10
     const val R = 1 shl 11
+    const val L2 = 1 shl 12
+    const val R2 = 1 shl 13
+    const val L3 = 1 shl 14
+    const val R3 = 1 shl 15
 }
 
 /**

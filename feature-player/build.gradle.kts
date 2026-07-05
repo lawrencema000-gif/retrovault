@@ -23,6 +23,7 @@ dependencies {
     implementation(project(":core-input"))
     implementation(project(":data-saves"))
     implementation(project(":data-settings"))
+    implementation(project(":data-library"))
     implementation(project(":data-download"))
 
     implementation(libs.androidx.core.ktx)

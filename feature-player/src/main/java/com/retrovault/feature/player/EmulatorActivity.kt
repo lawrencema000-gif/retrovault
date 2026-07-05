@@ -39,6 +39,7 @@ class EmulatorActivity : ComponentActivity() {
     private lateinit var gamepad: GamepadMapper
     private var hotplug: HotplugMonitor? = null
     private var saveStates: SaveStateManager? = null
+    private var saveStatesRecommended = true
 
     // Player UI state driven from outside Compose (hotplug, virtkeys).
     private var gamepadConnected by mutableStateOf(false)
@@ -84,11 +85,27 @@ class EmulatorActivity : ComponentActivity() {
             LibretroBridge.nativeInitSwappy(this)
         }
 
+        // Identify the disc serial (cheap header read) — it keys the GameDB layer and the
+        // core's own compat.ini flags.
+        val serial: String? = gamePath?.let { path ->
+            runCatching {
+                com.retrovault.library.GameIdentifier
+                    .identify(applicationContext, java.io.File(path), system)
+                    ?.takeIf { !it.fakeId }?.serial
+            }.getOrNull()
+        }
+
         // Resolve settings (4-layer: defaults → gamedb → device-class → user) and push the
         // core-variable-backed ones BEFORE the core loads (some are read only at load).
         val gameKeyForSettings = intent.getStringExtra(EXTRA_GAME_ID)
-        val settings = com.retrovault.settings.SettingsResolver(applicationContext)
+        val settings = com.retrovault.settings.SettingsResolver(applicationContext) {
+            com.retrovault.settings.GameDb.settingsFor(applicationContext, serial)
+        }
         settings.applyToCore(gameKeyForSettings)
+
+        // GameDB flag: some titles corrupt when save-stated — respect PPSSPP's judgment.
+        saveStatesRecommended =
+            !com.retrovault.settings.GameDb.hasFlag(applicationContext, serial, "SaveStatesNotRecommended")
 
         if (coreOverride != null) {
             session.start(this, coreOverride, gamePath)
@@ -197,7 +214,7 @@ class EmulatorActivity : ComponentActivity() {
         // executes state ops even with the Surface detached). Blocking is intentional —
         // the state must hit disk before the process can be killed.
         val mgr = saveStates
-        if (mgr != null && session.status == CoreStatus.RUNNING) {
+        if (mgr != null && saveStatesRecommended && session.status == CoreStatus.RUNNING) {
             session.paused = false // a frozen loop still services ops, but never save mid-pause transition
             runBlocking { runCatching { mgr.save(SaveStateManager.AUTO_SLOT) } }
         }

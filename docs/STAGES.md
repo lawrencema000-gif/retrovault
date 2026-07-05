@@ -23,6 +23,26 @@
 > pass-through); SAF-tree scan + ISO9660 unverified without a device/real ISO; wiring imported
 > games into the Library UI grid lands with the installed-games section.
 >
+> ✅ **P12 done (2026-07-06):** Compatibility GameDB, end to end. **Two levers:** (1) PPSSPP's
+> own pinned `compat.ini` (GPL-2.0, 71 sections/890 serials) ships via CoreAssets into the
+> core system dir — the CORE applies all engine-level per-serial flags natively; (2) our
+> GameDB pipeline for app-level data: `tools/gamedb-import/import.mjs` (Node) parses the same
+> file → **baked APK snapshot** (`assets/gamedb/snapshot.json`) + Supabase. **Cloud:** 6-table
+> schema (game_serials, gamedb_entries, device_profiles, compat_reports, recommended_settings,
+> compat_summary) with RLS (public read; reports insert-only per-user, P13 fills); token-
+> guarded **`gamedb-sync` edge function** re-imports from the pinned tag, upserts (890/890),
+> and regenerates the **versioned public storage snapshot** (`gamedb/latest.json` + v-stamped,
+> verified fetchable) — the plan's "snapshot regenerates end-to-end" acceptance, demonstrated
+> live. **App:** `GameDb` provider (baked snapshot, cache-file override point for remote
+> refresh at P13) feeding the resolver's GAMEDB layer by default; EmulatorActivity identifies
+> the disc **serial** at launch (GameIdentifier header read) → GameDB closure + native compat
+> flags; `SaveStatesNotRecommended` flag **gates auto-save** (PPSSPP's judgment respected).
+> GameDbTest: snapshot loads (890), known-fussy serials auto-get flags (Darkstalkers
+> ULES-00016 → ForceSoftwareRenderer; GoW → framerate hack), compat.ini lands in the system
+> dir, GAMEDB origin resolves + user override wins — **OK (3)**; full suite **OK (35 tests)**
+> (AudioTest ring-fill % downgraded to logged metric alongside underruns — long-suite
+> SwiftShader AAudio starvation; DRC-cap + liveness stay hard asserts).
+>
 > ✅ **P11 done (2026-07-05):** Settings framework. **4-layer resolution engine** (`:data-settings`):
 > DEFAULT → GAMEDB (provider stub, wired to Supabase at P12) → DEVICE → USER_GLOBAL →
 > USER_GAME, every value carrying its **origin badge**; user layers stored as JSON *diffs*

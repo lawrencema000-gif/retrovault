@@ -27,10 +27,10 @@ work is distributed under GPLv3 with changes stated in the git history of this r
 | --- | --- | --- | --- |
 | PPSSPP `ppge_atlas.zim` | https://github.com/hrydgard/ppsspp `v1.20.4` (`assets/ppge_atlas.zim`) | GPL-2.0-or-later | `app/…/assets/coresystem/PPSSPP/`; extracted into the core system dir at session start (`CoreAssets.kt`) — the HLE OSD/dialog font atlas required for sceUtility dialogs to render |
 | `gamecontrollerdb.txt` | https://github.com/mdqinc/SDL_GameControllerDB (master, 2026-07-05, sha256 `0229ce25…8cceb2`) | zlib | `core-input/…/assets/`; per-model controller auto-mapping (`ControllerDb.kt`) matched by vendor/product id |
+| PPSSPP `compat.ini` | https://github.com/hrydgard/ppsspp `v1.20.4` (`assets/compat.ini`, sha256 `e0db159a…589da1`) | GPL-2.0-or-later | `app/…/assets/coresystem/PPSSPP/` (extracted at session start — the core applies its per-serial compat flags natively) AND parsed by `tools/gamedb-import` into the GameDB snapshot (`assets/gamedb/snapshot.json` + Supabase `gamedb_entries`) |
 
 ## Data and assets (planned per MASTERPLAN.md; entries added when shipped)
 
-- PPSSPP `assets/compat.ini` (GPL-2.0-or-later) — per-game compatibility flags (P12)
 - PPSSPP `assets/shaders/*` + `defaultshaders.ini` (GPL-2.0-or-later) — post-processing chain (P19)
 - `gamecontrollerdb.txt` (SDL community DB, zlib-style) — gamepad auto-mapping (P9)
 - rcheevos (MIT) — RetroAchievements client (P20)

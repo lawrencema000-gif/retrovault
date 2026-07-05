@@ -11,8 +11,14 @@ import com.retrovault.emulator.LibretroBridge
  */
 class SettingsResolver(
     private val context: Context,
-    /** GameDB layer provider: serial/gameKey → setting overrides. Wired to Supabase in P12. */
-    private val gameDbProvider: (String?) -> Map<String, String> = { emptyMap() },
+    /**
+     * GameDB layer provider. The default looks the key up in the baked snapshot when it IS
+     * a serial; callers that know the real serial for a non-serial gameKey (store games)
+     * pass a closure over it — see EmulatorActivity.
+     */
+    private val gameDbProvider: (String?) -> Map<String, String> = { key ->
+        GameDb.settingsFor(context, key)
+    },
 ) {
     private val store = SettingsStore(context)
 

@@ -109,6 +109,14 @@ class EmulatorSession {
     fun rewindStep(): Boolean =
         status == CoreStatus.RUNNING && LibretroBridge.nativeRewindStep()
 
+    /** Push the enabled cheat set (each entry = one cheat's CWCheat code text). */
+    fun applyCheats(codes: List<String>) {
+        if (LibretroBridge.available) LibretroBridge.nativeApplyCheats(codes.toTypedArray())
+    }
+
+    val coreSupportsCheats: Boolean
+        get() = LibretroBridge.available && LibretroBridge.nativeCoreSupportsCheats()
+
     fun stop() {
         if (status == CoreStatus.RUNNING || LibretroBridge.nativeIsRunning()) {
             LibretroBridge.nativeRequestStop()

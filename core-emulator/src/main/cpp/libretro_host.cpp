@@ -63,6 +63,8 @@ struct Core {
     size_t (*retro_serialize_size)() = nullptr;
     bool (*retro_serialize)(void*, size_t) = nullptr;
     bool (*retro_unserialize)(const void*, size_t) = nullptr;
+    void (*retro_cheat_reset)() = nullptr;
+    void (*retro_cheat_set)(unsigned, bool, const char*) = nullptr;
 };
 
 template <typename T>
@@ -111,6 +113,12 @@ std::atomic<int64_t> g_inputEventsSampled{0};
 std::mutex g_varsMutex;
 std::map<std::string, std::string> g_coreVars;
 std::atomic<bool> g_varsDirty{false};
+
+// Cheats (P14): the enabled cheat codes (CWCheat text) are pushed from Kotlin; the run-loop
+// thread applies them via retro_cheat_reset + retro_cheat_set (must run on the emu thread).
+std::mutex g_cheatMutex;
+std::vector<std::string> g_cheats; // enabled cheats only, each = its CWCheat code lines
+std::atomic<bool> g_cheatsDirty{false};
 
 // Run-loop ops: posted from any thread, executed by the run-loop thread between frames
 // (retro_serialize/unserialize must run on the emu/GL thread — PPSSPP requires it).
@@ -361,6 +369,8 @@ bool loadCoreOnThread() {
     g_core.retro_serialize_size = sym<size_t (*)()>(h, "retro_serialize_size");
     g_core.retro_serialize = sym<bool (*)(void*, size_t)>(h, "retro_serialize");
     g_core.retro_unserialize = sym<bool (*)(const void*, size_t)>(h, "retro_unserialize");
+    g_core.retro_cheat_reset = sym<void (*)()>(h, "retro_cheat_reset");
+    g_core.retro_cheat_set = sym<void (*)(unsigned, bool, const char*)>(h, "retro_cheat_set");
 
     if (!g_core.retro_init || !g_core.retro_run || !g_core.retro_load_game ||
         !g_core.retro_set_environment) {
@@ -464,6 +474,26 @@ bool doScreenshotOnThread(const std::string& framePath) {
 }
 
 // ---------------------------------------------------------------- rewind (run-loop thread)
+
+// Run-loop thread: (re)apply the enabled cheat set to the core. retro_cheat_reset clears the
+// engine, then each enabled code is set at its index. Cheap; only runs when the set changes.
+void applyCheatsIfDirty() {
+    if (!g_cheatsDirty.exchange(false)) return;
+    if (!g_core.retro_cheat_reset || !g_core.retro_cheat_set) {
+        LOGW("core has no cheat interface");
+        return;
+    }
+    std::vector<std::string> cheats;
+    {
+        std::lock_guard<std::mutex> lk(g_cheatMutex);
+        cheats = g_cheats;
+    }
+    g_core.retro_cheat_reset();
+    for (size_t i = 0; i < cheats.size(); i++) {
+        g_core.retro_cheat_set((unsigned)i, true, cheats[i].c_str());
+    }
+    LOGI("applied %zu cheat(s)", cheats.size());
+}
 
 void applyRewindConfig() {
     if (!g_rewindConfigPending.exchange(false)) return;
@@ -651,6 +681,13 @@ Java_com_retrovault_emulator_LibretroBridge_nativeStartSession(
     g_rewindConfigPending = true; // run loop clears any previous session's ring
     g_lastRestoreFrame = 0;
     g_lastRestoreTimeNs = 0;
+    {
+        // Drop the previous game's cheats; the run loop re-applies (an empty reset) so nothing
+        // leaks across sessions. Kotlin pushes this game's enabled cheats before/at start.
+        std::lock_guard<std::mutex> lk(g_cheatMutex);
+        g_cheats.clear();
+    }
+    g_cheatsDirty = true;
     g_supportsNoGame = false;
     g_coreFps = 60.0;
     g_audioFrames = 0;
@@ -758,6 +795,7 @@ Java_com_retrovault_emulator_LibretroBridge_nativeRunLoop(JNIEnv*, jobject) {
 
         g_video.callContextResetOnce();
         applyRewindConfig();
+        applyCheatsIfDirty();
 
         // Speed: ≥200% batches N runs per presented frame (only the last is audible/shown);
         // 50% slow-mo runs the core on alternate iterations.
@@ -1048,6 +1086,37 @@ Java_com_retrovault_emulator_LibretroBridge_nativeVariablesDirty(JNIEnv*, jobjec
 JNIEXPORT jboolean JNICALL
 Java_com_retrovault_emulator_LibretroBridge_nativeIsHardcore(JNIEnv*, jobject) {
     return g_hardcoreActive.load() ? JNI_TRUE : JNI_FALSE;
+}
+
+// ---- cheats (P14) ----
+
+// Replace the enabled cheat set (CWCheat code text per entry). Applied live on the run-loop
+// thread. Passing an empty array clears all cheats.
+JNIEXPORT void JNICALL
+Java_com_retrovault_emulator_LibretroBridge_nativeApplyCheats(JNIEnv* env, jobject, jobjectArray codes) {
+    std::vector<std::string> next;
+    if (codes) {
+        jsize n = env->GetArrayLength(codes);
+        next.reserve(n);
+        for (jsize i = 0; i < n; i++) {
+            auto s = (jstring)env->GetObjectArrayElement(codes, i);
+            if (!s) continue;
+            const char* c = env->GetStringUTFChars(s, nullptr);
+            if (c) next.emplace_back(c);
+            env->ReleaseStringUTFChars(s, c);
+            env->DeleteLocalRef(s);
+        }
+    }
+    {
+        std::lock_guard<std::mutex> lk(g_cheatMutex);
+        g_cheats = std::move(next);
+    }
+    g_cheatsDirty = true;
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_retrovault_emulator_LibretroBridge_nativeCoreSupportsCheats(JNIEnv*, jobject) {
+    return (g_core.retro_cheat_set && g_core.retro_cheat_reset) ? JNI_TRUE : JNI_FALSE;
 }
 
 } // extern "C"

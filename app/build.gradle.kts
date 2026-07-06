@@ -65,6 +65,7 @@ dependencies {
     implementation(project(":data-library"))
     implementation(project(":data-saves"))
     implementation(project(":data-settings"))
+    implementation(project(":data-cheats"))
     implementation(project(":feature-store"))
     implementation(project(":feature-player"))
 

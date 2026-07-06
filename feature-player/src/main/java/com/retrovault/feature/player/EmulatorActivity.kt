@@ -43,12 +43,15 @@ class EmulatorActivity : ComponentActivity() {
     private var hotplug: HotplugMonitor? = null
     private var saveStates: SaveStateManager? = null
     private var saveStatesRecommended = true
+    private var cheatManager: com.retrovault.cheats.CheatManager? = null
 
     // Player UI state driven from outside Compose (hotplug, virtkeys).
     private var gamepadConnected by mutableStateOf(false)
     private var pausedByHotplug by mutableStateOf(false)
     private var menuRequests by mutableIntStateOf(0)
     private var showCompatPrompt by mutableStateOf(false)
+    private var showCheats by mutableStateOf(false)
+    private var cheatTick by mutableIntStateOf(0)
 
     // Compat reporting context (P13).
     private var gameSerial: String? = null
@@ -140,6 +143,10 @@ class EmulatorActivity : ComponentActivity() {
             session.enableRewind(256L * 1024 * 1024, intervalFrames = 120)
         }
 
+        // Cheats: apply this game's enabled cheats (user-imported cheat.db, by serial).
+        cheatManager = com.retrovault.cheats.CheatManager(applicationContext)
+        applyCheats()
+
         // "Continue" from the library: restore the auto-save once the game has booted.
         if (intent.getBooleanExtra(EXTRA_RESUME, false) && saveStates != null) {
             lifecycleScope.launch {
@@ -202,7 +209,27 @@ class EmulatorActivity : ComponentActivity() {
                                 )
                             }
                         },
+                        onCheats = { showCheats = true },
                     )
+
+                    val mgr = cheatManager
+                    if (showCheats && mgr != null) {
+                        // cheatTick re-reads entries after a toggle.
+                        val entries = androidx.compose.runtime.remember(cheatTick, gameSerial) {
+                            mgr.entriesFor(gameSerial)
+                        }
+                        CheatsSheet(
+                            dbImported = mgr.isDbImported,
+                            hasSerial = gameSerial != null,
+                            entries = entries,
+                            onToggle = { name, on ->
+                                mgr.setEnabled(gameSerial, name, on)
+                                applyCheats()
+                                cheatTick++
+                            },
+                            onDismiss = { showCheats = false },
+                        )
+                    }
 
                     // Post-session compat prompt (≥10 min, once per serial+version).
                     if (showCompatPrompt) {
@@ -286,6 +313,14 @@ class EmulatorActivity : ComponentActivity() {
         lifecycleScope.launch {
             if (save) mgr.save(QUICK_SLOT) else mgr.load(QUICK_SLOT)
         }
+    }
+
+    /** Push the currently-enabled cheats to the core; any active cheat clears hardcore mode. */
+    private fun applyCheats() {
+        val mgr = cheatManager ?: return
+        val codes = mgr.enabledCodes(gameSerial)
+        if (codes.isNotEmpty()) session.hardcoreActive = false
+        session.applyCheats(codes)
     }
 
     override fun onDestroy() {

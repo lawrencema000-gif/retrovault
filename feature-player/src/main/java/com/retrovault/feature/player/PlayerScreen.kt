@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.History
@@ -86,6 +87,7 @@ fun PlayerScreen(
     onLoadState: () -> Unit = {},
     saveStates: com.retrovault.saves.SaveStateManager? = null,
     onScreenshot: () -> Unit = {},
+    onCheats: () -> Unit = {},
 ) {
     var showMenu by remember { mutableStateOf(false) }
     var showSlots by remember { mutableStateOf(false) }
@@ -229,6 +231,7 @@ fun PlayerScreen(
                 onRewind = { session.rewindStep(); showMenu = false },
                 onScreenshot = { onScreenshot(); showMenu = false },
                 onSlots = if (saveStates != null) ({ showSlots = true; showMenu = false }) else null,
+                onCheats = { onCheats(); showMenu = false },
             )
         }
 
@@ -293,6 +296,7 @@ private fun BoxScope.QuickMenu(
     onRewind: () -> Unit = {},
     onScreenshot: () -> Unit = {},
     onSlots: (() -> Unit)? = null,
+    onCheats: () -> Unit = {},
 ) {
     Box(
         Modifier
@@ -329,6 +333,11 @@ private fun BoxScope.QuickMenu(
             } else {
                 Spacer(Modifier.weight(1f))
             }
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            MenuTile(Icons.Filled.Bolt, PulsarPrimary, "Cheats", Modifier.weight(1f), onClick = onCheats)
+            Spacer(Modifier.weight(1f))
         }
         Spacer(Modifier.height(12.dp))
         Row(

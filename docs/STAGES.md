@@ -23,6 +23,20 @@
 > pass-through); SAF-tree scan + ISO9660 unverified without a device/real ISO; wiring imported
 > games into the Library UI grid lands with the installed-games section.
 >
+> ✅ **P14 done (2026-07-06):** Cheats (CWCheat). **Native:** `retro_cheat_reset`/`retro_cheat_set`
+> symbols loaded; enabled codes pushed via `nativeApplyCheats(String[])` and applied on the
+> run-loop thread (`applyCheatsIfDirty` before retro_run); cleared per session; a homebrew core
+> with no cheat interface is handled gracefully. **`:data-cheats`:** `CheatDb` parser (CWCheat
+> `_S`/`_G`/`_C0/_C1`/`_L` format, dashless-serial normalization), `CheatManager` (import from
+> **SAF file or URL — validated, NEVER bundled**; per-serial enabled set as JSON; default-on
+> honored; produces the enabled-code list). **UI:** in-game `CheatsSheet` (per-game toggles +
+> search + empty states) off the quick menu's new Cheats tile; Settings → CHEATS imports/removes
+> the cheat.db with a prominent "never bundled" note. **Enabling any cheat clears
+> `hardcoreActive`** (achievements off, RA-ready). CheatTest: format parse, enabled-state
+> round-trip across instances, **the legal boundary (walks the whole APK asset tree asserting no
+> cheat.db ships)**, and live apply→clear on the real PPSSPP session without wedging — **OK (4)**;
+> full suite **OK (42 tests)**.
+>
 > ✅ **P13 done (2026-07-06):** In-app compat reporting + game-page surfacing. **Account-less
 > design** (auth accounts arrive later): reports key on a persistent install UUID; the
 > `submit-compat-report` edge function validates (serial pattern, rating 1–5, size caps) and

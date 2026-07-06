@@ -21,7 +21,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.BlurOn
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.BookmarkAdded
+import kotlinx.coroutines.launch
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Grain
 import androidx.compose.material.icons.filled.Hd
@@ -181,6 +183,10 @@ fun SettingsScreen(gameKey: String? = null, gameTitle: String? = null) {
                 BiosRow("PlayStation", ps1BiosInstalled) { ps1Bios.launch(arrayOf("*/*")) }
                 Divider()
                 BiosRow("PlayStation 2", ps2BiosInstalled) { ps2Bios.launch(arrayOf("*/*")) }
+            }
+
+            Section("CHEATS") {
+                CheatDbRow()
             }
 
             Section("SYSTEM INFO") {
@@ -424,6 +430,73 @@ private fun GoldRow(isGold: Boolean, onUpgrade: () -> Unit) {
                 Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = PulsarTextDim, modifier = Modifier.size(18.dp))
             }
         }
+    }
+}
+
+@Composable
+private fun CheatDbRow() {
+    val context = LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val manager = remember { com.retrovault.cheats.CheatManager(context) }
+    var imported by remember { mutableStateOf(manager.isDbImported) }
+    var busy by remember { mutableStateOf(false) }
+
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            busy = true
+            scope.launch {
+                imported = manager.importFromUri(uri)
+                busy = false
+            }
+        }
+    }
+
+    Column(Modifier.padding(16.dp)) {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            RowIcon(Icons.Filled.Bolt, PulsarPrimary, "CWCheat database")
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (imported) {
+                    Icon(Icons.Filled.CheckCircle, null, tint = PulsarTeal, modifier = Modifier.size(16.dp))
+                    Text("Imported", fontSize = 12.sp, color = PulsarTeal, fontFamily = ChakraPetch)
+                }
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Box(
+                Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(PulsarSurface3)
+                    .border(1.dp, PulsarStroke, RoundedCornerShape(12.dp))
+                    .clickable(enabled = !busy) { picker.launch(arrayOf("*/*")) }
+                    .padding(vertical = 12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(if (busy) "Importing…" else "Import cheat.db", fontSize = 12.sp, color = PulsarText, fontFamily = ChakraPetch)
+            }
+            if (imported) {
+                Box(
+                    Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0x1FFF5A5A))
+                        .border(1.dp, Color(0x4DFF5A5A), RoundedCornerShape(12.dp))
+                        .clickable { manager.deleteDb(); imported = false }
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    contentAlignment = Alignment.Center
+                ) { Text("Remove", fontSize = 12.sp, color = Color(0xFFFF8A8A), fontFamily = ChakraPetch) }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Import a community CWCheat cheat.db from your device. Pulsar never bundles cheat " +
+                "data. Per-game cheat toggles appear in the in-game menu.",
+            fontSize = 10.sp, lineHeight = 14.sp, color = PulsarTextFaint
+        )
     }
 }
 

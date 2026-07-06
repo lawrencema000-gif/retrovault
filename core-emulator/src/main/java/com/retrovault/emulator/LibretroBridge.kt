@@ -123,6 +123,17 @@ object LibretroBridge {
     external fun nativeSetHardcore(on: Boolean)
     external fun nativeIsHardcore(): Boolean
 
+    // ---- cheats (P14) ----
+
+    /**
+     * Replace the enabled cheat set — each entry is one cheat's CWCheat code text. Applied
+     * live (retro_cheat_reset + retro_cheat_set on the run-loop thread). Empty array clears.
+     */
+    external fun nativeApplyCheats(codes: Array<String>)
+
+    /** Whether the loaded core exposes the libretro cheat interface. */
+    external fun nativeCoreSupportsCheats(): Boolean
+
     // ---- core variables (P11 settings framework) ----
 
     /**

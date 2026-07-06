@@ -43,9 +43,10 @@ because another store hosts it). Titles with mixed/unclear asset licensing are N
 
 > **Note on Battlegrounds 3:** license review (2026-07-06) found the game's sound effects may
 > derive from a commercial SFX library (sounddogs.com) that the author's blanket CC-BY-SA
-> asset grant may not cover — a possible chain-of-title defect. Pending author confirmation,
-> consider migrating the store anchor to rRootage (cleanly BSD-2). Kept published for now
-> (test anchor); flagged for a hosting decision.
+> asset grant may not cover — a possible chain-of-title defect. **Decision (2026-07-06): keep
+> published for now** — it has been on PPSSPP's official store for years and the concern is
+> credible but unconfirmed. To revisit before public launch (confirm SFX rights with the
+> author, or migrate the anchor to rRootage, which is cleanly BSD-2).
 
 ## Data and assets (planned per MASTERPLAN.md; entries added when shipped)
 

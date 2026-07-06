@@ -23,6 +23,24 @@
 > pass-through); SAF-tree scan + ISO9660 unverified without a device/real ISO; wiring imported
 > games into the Library UI grid lands with the installed-games section.
 >
+> ✅ **P16 done (2026-07-06):** Auth + cloud saves with 3-way conflict UX (emulator-provable
+> portion; two-physical-device collide test → P5 device session). **Anonymous-first auth:**
+> enabled anon sign-ins via the Management API (PAT from Cred Manager, my Supabase mandate),
+> `AuthManager` (GoTrue REST — anon signup, session persist, token refresh, email-link to make
+> permanent); real anon session verified live. **Cloud saves:** `cloud_saves` manifest table +
+> append-only `cloud_save_versions` (restore) + owner-only RLS (works for anon + permanent) +
+> private `saves` bucket w/ owner-folder RLS; history maintained by trigger. **The acceptance
+> — never clobber:** `ConflictResolver` (3-way: local vs cloud vs last-synced base → IN_SYNC/
+> PUSH/PULL/CONFLICT); `CloudSaveSync` tracks the per-device base so two devices editing the
+> same save produce a **CONFLICT, not silent loss**; `CloudSaveClient` (Storage + manifest over
+> RLS-scoped tokens). `ConflictSheet` UI (Keep device / cloud / both — both preserves the cloud
+> copy in a sidecar). CloudSaveTest: resolver exhaustive (every branch, incl. both-diverged→
+> conflict + no-base→conflict), **two-device sim proving cloud unchanged + local intact + KEEP_
+> BOTH preserves both**, and **live anonymous sign-in + real Storage round-trip (upload→manifest
+> →download, bytes+hash match)** — **OK (3)**; full suite **OK (49 tests)**. ⚙️ Provisioning
+> done this session: Supabase **anonymous sign-ins ENABLED**. Deferred: sign-in/link UI screen,
+> auto-sync-on-exit player wiring, OAuth (needs Google client config), two-device live test (P5).
+>
 > ✅ **P15 done (2026-07-06):** Store v1 — legal catalog + delivery, on Supabase Storage (no R2
 > needed). Catalog contract extended (`Game`/DTO/query carry `licenseUrl`+`sourceUrl`; sha256
 > gate factored into shared `Sha256` util). **License curation done RIGHT:** a multi-agent

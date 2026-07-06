@@ -29,6 +29,24 @@ work is distributed under GPLv3 with changes stated in the git history of this r
 | `gamecontrollerdb.txt` | https://github.com/mdqinc/SDL_GameControllerDB (master, 2026-07-05, sha256 `0229ce25…8cceb2`) | zlib | `core-input/…/assets/`; per-model controller auto-mapping (`ControllerDb.kt`) matched by vendor/product id |
 | PPSSPP `compat.ini` | https://github.com/hrydgard/ppsspp `v1.20.4` (`assets/compat.ini`, sha256 `e0db159a…589da1`) | GPL-2.0-or-later | `app/…/assets/coresystem/PPSSPP/` (extracted at session start — the core applies its per-serial compat flags natively) AND parsed by `tools/gamedb-import` into the GameDB snapshot (`assets/gamedb/snapshot.json` + Supabase `gamedb_entries`) |
 
+## Hosted homebrew catalog (redistribution license verified per title)
+
+Pulsar hosts only games whose license clearly permits third-party redistribution of the
+binary + assets. Each title's license was verified at its canonical source (not merely
+because another store hosts it). Titles with mixed/unclear asset licensing are NOT hosted.
+
+| Title | Author | License | Source (evidence) |
+| --- | --- | --- | --- |
+| Battlegrounds 3 | Alex Wickes (xfacter) | GPL-3.0 (code) — **audio provenance under review** | https://github.com/xfacter/battlegrounds3 |
+| rRootage | Kenta Cho / Marcus R. Brown (PSP port) | BSD-2-Clause | https://github.com/PSP-Archive/rRootage-PSP |
+| Suicide Barbie | The Black Lotus | MIT (code) + CC-BY-SA-4.0 (assets) | https://github.com/theblacklotus/suicide-barbie |
+
+> **Note on Battlegrounds 3:** license review (2026-07-06) found the game's sound effects may
+> derive from a commercial SFX library (sounddogs.com) that the author's blanket CC-BY-SA
+> asset grant may not cover — a possible chain-of-title defect. Pending author confirmation,
+> consider migrating the store anchor to rRootage (cleanly BSD-2). Kept published for now
+> (test anchor); flagged for a hosting decision.
+
 ## Data and assets (planned per MASTERPLAN.md; entries added when shipped)
 
 - PPSSPP `assets/shaders/*` + `defaultshaders.ini` (GPL-2.0-or-later) — post-processing chain (P19)

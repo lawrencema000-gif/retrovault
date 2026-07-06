@@ -14,6 +14,10 @@ data class Game(
     val developer: String,
     val description: String,
     val license: String,
+    /** Link to the license text / source repo — shown prominently for transparency. */
+    val licenseUrl: String? = null,
+    /** Canonical source (author repo / homepage) proving redistribution rights. */
+    val sourceUrl: String? = null,
     val boxArtUrl: String?,
     val downloadUrl: String?,
     val sizeBytes: Long,

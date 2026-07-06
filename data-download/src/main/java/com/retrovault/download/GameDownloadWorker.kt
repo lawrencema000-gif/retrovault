@@ -9,9 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import java.io.File
 import java.io.FileOutputStream
-import java.security.MessageDigest
 
 /**
  * Downloads a legally-distributable game into app-scoped storage: resolve a signed URL, stream it
@@ -47,7 +45,8 @@ class GameDownloadWorker(context: Context, params: WorkerParameters) :
                 }
             }
 
-            if (signed.sha256 != null && !verifySha256(dest, signed.sha256)) {
+            // Integrity gate: a hash mismatch aborts the install and deletes the bad file.
+            if (signed.sha256 != null && !Sha256.matches(dest, signed.sha256)) {
                 dest.delete()
                 return@withContext Result.failure()
             }
@@ -61,20 +60,6 @@ class GameDownloadWorker(context: Context, params: WorkerParameters) :
         } catch (e: Exception) {
             Result.retry()
         }
-    }
-
-    private fun verifySha256(file: File, expected: String): Boolean {
-        val md = MessageDigest.getInstance("SHA-256")
-        file.inputStream().use { s ->
-            val buf = ByteArray(1 shl 16)
-            while (true) {
-                val n = s.read(buf)
-                if (n <= 0) break
-                md.update(buf, 0, n)
-            }
-        }
-        val hex = md.digest().joinToString("") { "%02x".format(it) }
-        return hex.equals(expected, ignoreCase = true)
     }
 
     companion object {

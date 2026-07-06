@@ -23,6 +23,26 @@
 > pass-through); SAF-tree scan + ISO9660 unverified without a device/real ISO; wiring imported
 > games into the Library UI grid lands with the installed-games section.
 >
+> ✅ **P15 done (2026-07-06):** Store v1 — legal catalog + delivery, on Supabase Storage (no R2
+> needed). Catalog contract extended (`Game`/DTO/query carry `licenseUrl`+`sourceUrl`; sha256
+> gate factored into shared `Sha256` util). **License curation done RIGHT:** a multi-agent
+> workflow researched + **adversarially verified** all 18 PPSSPP-store candidates at their
+> canonical sources (PPSSPP's own hosting permission does NOT transfer to us). Only titles with
+> clear third-party-redistribution grants pass. **Newly hosted (verified):** rRootage
+> (BSD-2-Clause, Kenta Cho/mrbrown) + Suicide Barbie (MIT + CC-BY-SA-4.0, The Black Lotus),
+> mirrored to Supabase Storage via a one-shot token edge fn (now a 410 stub) with sha256+size,
+> catalog rows published. **The verifier earned its keep:** it REFUTED Ozone (GPL code but
+> gfx/music by uncredited third parties → GameBrew "Mixed") and — importantly — **Battlegrounds
+> 3** (code GPLv3-clean, but SFX appear sourced from commercial sounddogs.com, an over-claimed
+> CC-BY-SA grant = chain-of-title defect). ⚠️ **bg3 kept published for now (test anchor) but
+> FLAGGED — recommend migrating the anchor to rRootage + unpublishing bg3 pending author
+> confirmation.** 13 of 18 candidates rejected (freeware-no-redist / NC / mixed assets). Store
+> UI: prominent LICENSE & SOURCE card (author + license + tappable source link) on the detail
+> screen. StoreTest: catalog serves licensed downloadable titles w/ author+size+link, sha256
+> gate BOTH ways (match passes / tamper aborts), and **rRootage downloads→verifies→installs→
+> boots (121 frames)** — the pipeline proven on a title beyond the original anchor — **OK (4)**;
+> full suite **OK (46 tests)**. NOTICE records per-title license evidence + the bg3 flag.
+>
 > ✅ **P14 done (2026-07-06):** Cheats (CWCheat). **Native:** `retro_cheat_reset`/`retro_cheat_set`
 > symbols loaded; enabled codes pushed via `nativeApplyCheats(String[])` and applied on the
 > run-loop thread (`applyCheatsIfDirty` before retro_run); cleared per session; a homebrew core

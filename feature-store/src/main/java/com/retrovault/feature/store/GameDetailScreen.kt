@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.SdCard
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Tune
@@ -317,14 +318,65 @@ fun GameDetailScreen(
                 lineHeight = 21.sp,
                 color = PulsarTextBody
             )
+            // LICENSE & SOURCE — shown prominently: transparency is the legal foundation.
+            Spacer(Modifier.height(20.dp))
+            Text(
+                "LICENSE & SOURCE",
+                fontFamily = ChakraPetch, fontWeight = FontWeight.SemiBold,
+                fontSize = 12.sp, letterSpacing = 2.sp, color = PulsarTextDim
+            )
+            Spacer(Modifier.height(8.dp))
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(PulsarSurface1)
+                    .border(1.dp, PulsarStrokeSoft, RoundedCornerShape(14.dp))
+                    .padding(14.dp)
+            ) {
+                LicenseLine("Author", game.developer)
+                Spacer(Modifier.height(8.dp))
+                LicenseLine("License", game.license)
+                val link = game.sourceUrl ?: game.licenseUrl
+                if (link != null) {
+                    Spacer(Modifier.height(10.dp))
+                    Row(
+                        Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable {
+                                runCatching {
+                                    context.startActivity(
+                                        android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(link))
+                                    )
+                                }
+                            }
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(Icons.Filled.OpenInNew, null, tint = PulsarTeal, modifier = Modifier.size(15.dp))
+                        Text("View source / license", fontSize = 12.sp, color = PulsarTeal, fontFamily = ChakraPetch)
+                    }
+                }
+            }
+
             Spacer(Modifier.height(14.dp))
             Text(
-                "Only legally distributable games are hosted. Commercial titles must be imported from your own copy.",
+                "Only legally distributable games are hosted, with the author's redistribution license " +
+                    "recorded. Commercial titles must be imported from your own copy.",
                 fontSize = 11.sp,
                 lineHeight = 16.sp,
                 color = PulsarTextFaint
             )
         }
+    }
+}
+
+@Composable
+private fun LicenseLine(label: String, value: String) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, fontSize = 12.sp, color = PulsarTextDim)
+        Text(value, fontSize = 12.sp, color = PulsarText, fontFamily = ChakraPetch, fontWeight = FontWeight.SemiBold)
     }
 }
 

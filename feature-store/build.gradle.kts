@@ -23,6 +23,7 @@ dependencies {
     implementation(project(":data-download"))
     implementation(project(":data-saves"))
     implementation(project(":data-settings"))
+    implementation(project(":data-library"))
     implementation(project(":data-billing"))
 
     implementation(platform(libs.androidx.compose.bom))

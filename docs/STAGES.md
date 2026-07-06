@@ -23,6 +23,22 @@
 > pass-through); SAF-tree scan + ISO9660 unverified without a device/real ISO; wiring imported
 > games into the Library UI grid lands with the installed-games section.
 >
+> ✅ **P13 done (2026-07-06):** In-app compat reporting + game-page surfacing. **Account-less
+> design** (auth accounts arrive later): reports key on a persistent install UUID; the
+> `submit-compat-report` edge function validates (serial pattern, rating 1–5, size caps) and
+> inserts with the service role; a **DB unique index enforces once per install+serial+
+> app-version** and a **trigger maintains `compat_summary`** (count/avg/last). **App:**
+> `CompatReporter` (installId, prompt policy ≥10 min + once per serial+version, submit,
+> public `summaryFor`); post-session **CompatRatingSheet** (5 tiers Broken→Perfect + optional
+> graphics/audio/speed sub-scores) shown on quit when eligible, auto-filling device info
+> (SoC/GPU family/ABI/SDK/backend) + the user's settings diff + core version; game detail
+> pages show a **"Community ★ x.x · N reports"** chip when the installed game's serial has
+> reports. **🐛 Fixed along the way: menu-quit called session.stop() before finish(), which
+> skipped the onDestroy auto-save — "Continue" only survived process kills. Quit now flows
+> through teardown so the auto-save always lands.** CompatReportTest: prompt policy, stable
+> install id, and a REAL round-trip against the live backend (insert → duplicate rejected →
+> summary ≥1 with sane avg; row verified server-side) — **OK (3)**; full suite **OK (38)**.
+>
 > ✅ **P12 done (2026-07-06):** Compatibility GameDB, end to end. **Two levers:** (1) PPSSPP's
 > own pinned `compat.ini` (GPL-2.0, 71 sections/890 serials) ships via CoreAssets into the
 > core system dir — the CORE applies all engine-level per-serial flags natively; (2) our

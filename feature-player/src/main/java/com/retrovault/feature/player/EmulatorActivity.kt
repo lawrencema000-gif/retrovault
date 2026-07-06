@@ -16,8 +16,10 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.compose.foundation.layout.fillMaxSize
 import com.retrovault.core.model.GameSystem
 import com.retrovault.core.ui.theme.PulsarTheme
+import com.retrovault.data.CompatReporter
 import com.retrovault.emulator.CoreStatus
 import com.retrovault.emulator.EmulatorSession
 import com.retrovault.emulator.LibretroBridge
@@ -31,6 +33,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 
 /** Full-screen, landscape gameplay host. Runs in the :emu process (see manifest). */
+@OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
 class EmulatorActivity : ComponentActivity() {
 
     private val session = EmulatorSession()
@@ -45,6 +48,15 @@ class EmulatorActivity : ComponentActivity() {
     private var gamepadConnected by mutableStateOf(false)
     private var pausedByHotplug by mutableStateOf(false)
     private var menuRequests by mutableIntStateOf(0)
+    private var showCompatPrompt by mutableStateOf(false)
+
+    // Compat reporting context (P13).
+    private var gameSerial: String? = null
+    private var sessionStartMs = 0L
+    private val appVersion: String by lazy {
+        runCatching { packageManager.getPackageInfo(packageName, 0).versionName }
+            .getOrNull() ?: "dev"
+    }
 
     // External gamepads dispatch through the Activity — captured here even with the
     // Compose chrome present, then written into the same native snapshot as touch.
@@ -106,6 +118,8 @@ class EmulatorActivity : ComponentActivity() {
         // GameDB flag: some titles corrupt when save-stated — respect PPSSPP's judgment.
         saveStatesRecommended =
             !com.retrovault.settings.GameDb.hasFlag(applicationContext, serial, "SaveStatesNotRecommended")
+        gameSerial = serial
+        sessionStartMs = System.currentTimeMillis()
 
         if (coreOverride != null) {
             session.start(this, coreOverride, gamePath)
@@ -162,31 +176,97 @@ class EmulatorActivity : ComponentActivity() {
 
         setContent {
             PulsarTheme {
-                PlayerScreen(
-                    title = title,
-                    system = system,
-                    session = session,
-                    inputHub = inputHub,
-                    onQuit = { finish() },
-                    gamepadConnected = gamepadConnected,
-                    pausedExternally = pausedByHotplug,
-                    onResumeExternal = {
-                        session.paused = false
-                        pausedByHotplug = false
-                    },
-                    menuRequests = menuRequests,
-                    onSaveState = { quickSlotOp(save = true) },
-                    onLoadState = { quickSlotOp(save = false) },
-                    saveStates = saveStates,
-                    onScreenshot = {
-                        lifecycleScope.launch {
-                            com.retrovault.saves.Screenshots.capture(
-                                applicationContext, "${gameKey ?: "game"}-${System.currentTimeMillis()}"
-                            )
-                        }
-                    },
-                )
+                androidx.compose.foundation.layout.Box(
+                    androidx.compose.ui.Modifier.fillMaxSize()
+                ) {
+                    PlayerScreen(
+                        title = title,
+                        system = system,
+                        session = session,
+                        inputHub = inputHub,
+                        onQuit = { requestQuit() },
+                        gamepadConnected = gamepadConnected,
+                        pausedExternally = pausedByHotplug,
+                        onResumeExternal = {
+                            session.paused = false
+                            pausedByHotplug = false
+                        },
+                        menuRequests = menuRequests,
+                        onSaveState = { quickSlotOp(save = true) },
+                        onLoadState = { quickSlotOp(save = false) },
+                        saveStates = saveStates,
+                        onScreenshot = {
+                            lifecycleScope.launch {
+                                com.retrovault.saves.Screenshots.capture(
+                                    applicationContext, "${gameKey ?: "game"}-${System.currentTimeMillis()}"
+                                )
+                            }
+                        },
+                    )
+
+                    // Post-session compat prompt (≥10 min, once per serial+version).
+                    if (showCompatPrompt) {
+                        CompatRatingSheet(
+                            gameTitle = title,
+                            onSubmit = { rating, subScores ->
+                                submitCompatReport(rating, subScores)
+                                showCompatPrompt = false
+                                finish()
+                            },
+                            onSkip = {
+                                showCompatPrompt = false
+                                finish()
+                            },
+                        )
+                    }
+                }
             }
+        }
+    }
+
+    /** Quit path: pause, maybe ask "how did it run?", then finish (teardown auto-saves). */
+    private fun requestQuit() {
+        val serial = gameSerial
+        val played = System.currentTimeMillis() - sessionStartMs
+        if (serial != null && CompatReporter.shouldPrompt(applicationContext, played, serial, appVersion)) {
+            CompatReporter.markPrompted(applicationContext, serial, appVersion)
+            session.paused = true
+            showCompatPrompt = true
+        } else {
+            finish()
+        }
+    }
+
+    private fun submitCompatReport(rating: Int, subScores: Map<String, Int>) {
+        val serial = gameSerial ?: return
+        val ctx = applicationContext
+        val device = buildMap {
+            put("manufacturer", android.os.Build.MANUFACTURER ?: "")
+            put("model", android.os.Build.MODEL ?: "")
+            put("sdk", android.os.Build.VERSION.SDK_INT.toString())
+            put("abi", android.os.Build.SUPPORTED_ABIS.firstOrNull() ?: "")
+            put("gpuFamily", com.retrovault.settings.DeviceClass.family().name)
+            if (android.os.Build.VERSION.SDK_INT >= 31) put("soc", android.os.Build.SOC_MODEL ?: "")
+            put("backend", "gles3")
+        }
+        val settingsDiff = buildMap {
+            com.retrovault.settings.SettingsStore(ctx).read(null).forEach { (k, v) -> put(k, v) }
+            intent.getStringExtra(EXTRA_GAME_ID)?.let { gk ->
+                com.retrovault.settings.SettingsStore(ctx).read(gk).forEach { (k, v) -> put("game:$k", v) }
+            }
+        }
+        // Fire-and-forget on the process lifecycle: must survive activity finish().
+        kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            CompatReporter.submit(
+                ctx,
+                serial = serial,
+                rating = rating,
+                subScores = subScores,
+                device = device,
+                settingsDiff = settingsDiff,
+                appVersion = appVersion,
+                coreVersion = "ppsspp_libretro v1.20.4",
+            )
         }
     }
 

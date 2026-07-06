@@ -200,6 +200,37 @@ fun GameDetailScreen(
                 MetaChip(Icons.Filled.Memory, PulsarYellow, game.system.shortCode)
             }
 
+            // Community compatibility (P13): shown when the installed game has a real serial
+            // with reports behind it.
+            var compat by remember { mutableStateOf<com.retrovault.data.CompatSummary?>(null) }
+            LaunchedEffect(installedPath) {
+                compat = null
+                val path = installedPath ?: return@LaunchedEffect
+                val serial = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    runCatching {
+                        com.retrovault.library.GameIdentifier
+                            .identify(context, java.io.File(path), game.system)
+                            ?.takeIf { !it.fakeId }?.serial
+                    }.getOrNull()
+                } ?: return@LaunchedEffect
+                compat = com.retrovault.data.CompatReporter.summaryFor(serial)
+            }
+            compat?.let { s ->
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.CenterHorizontally),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
+                ) {
+                    MetaChip(
+                        Icons.Filled.Verified, PulsarYellow,
+                        "Community ★ ${"%.1f".format(s.avgRating ?: 0.0)} · ${s.reportCount} " +
+                            if (s.reportCount == 1) "report" else "reports"
+                    )
+                }
+            }
+
             // primary CTA
             Spacer(Modifier.height(22.dp))
             // CTA state machine: Continue (auto-save) / Play (installed) / Downloading /

@@ -24,6 +24,7 @@ dependencies {
     implementation(project(":data-saves"))
     implementation(project(":data-settings"))
     implementation(project(":data-library"))
+    implementation(project(":data-supabase"))
     implementation(project(":data-download"))
 
     implementation(libs.androidx.core.ktx)

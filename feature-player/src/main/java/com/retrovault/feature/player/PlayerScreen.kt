@@ -221,7 +221,9 @@ fun PlayerScreen(
                     session.speedPct = if (fastForward) 200 else 100
                 },
                 onDismiss = { showMenu = false },
-                onQuit = { session.stop(); onQuit() },
+                // Session is NOT stopped here: the activity's teardown auto-saves first
+                // (stopping now would skip the auto-save and lose "Continue").
+                onQuit = onQuit,
                 onSaveState = { onSaveState(); showMenu = false },
                 onLoadState = { onLoadState(); showMenu = false },
                 onRewind = { session.rewindStep(); showMenu = false },

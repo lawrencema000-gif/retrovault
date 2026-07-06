@@ -23,6 +23,8 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.BlurOn
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.BookmarkAdded
+import androidx.compose.material.icons.filled.Contrast
+import androidx.compose.material.icons.filled.Language
 import kotlinx.coroutines.launch
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Grain
@@ -187,6 +189,15 @@ fun SettingsScreen(gameKey: String? = null, gameTitle: String? = null) {
 
             Section("CHEATS") {
                 CheatDbRow()
+            }
+
+            Section("APPEARANCE") {
+                ToggleRow(
+                    Icons.Filled.Contrast, PulsarTeal, "OLED black theme",
+                    com.retrovault.core.ui.AppPrefs.oledBlack
+                ) { com.retrovault.core.ui.AppPrefs.setOledBlack(!com.retrovault.core.ui.AppPrefs.oledBlack) }
+                Divider()
+                LanguageRow()
             }
 
             Section("SYSTEM INFO") {
@@ -429,6 +440,39 @@ private fun GoldRow(isGold: Boolean, onUpgrade: () -> Unit) {
                 Text("Unlock", fontSize = 12.sp, color = PulsarTextFaint, fontFamily = ChakraPetch)
                 Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = PulsarTextDim, modifier = Modifier.size(18.dp))
             }
+        }
+    }
+}
+
+/** Per-app language: cycles System → English → 日本語, applied via the platform LocaleManager. */
+@Composable
+private fun LanguageRow() {
+    val context = LocalContext.current
+    val tags = listOf("" to "System default", "en" to "English", "ja" to "日本語")
+    var tag by remember { mutableStateOf(com.retrovault.core.ui.AppPrefs.languageTag) }
+    val label = tags.firstOrNull { it.first == tag }?.second ?: "System default"
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable {
+                val next = tags[(tags.indexOfFirst { it.first == tag } + 1).mod(tags.size)].first
+                tag = next
+                com.retrovault.core.ui.AppPrefs.setLanguageTag(next)
+                if (android.os.Build.VERSION.SDK_INT >= 33) {
+                    val lm = context.getSystemService(android.app.LocaleManager::class.java)
+                    lm?.applicationLocales =
+                        if (next.isEmpty()) android.os.LocaleList.getEmptyLocaleList()
+                        else android.os.LocaleList.forLanguageTags(next)
+                }
+            }
+            .padding(horizontal = 16.dp, vertical = 15.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        RowIcon(Icons.Filled.Language, PulsarPrimary, "Language")
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(label, fontSize = 12.sp, color = PulsarTeal, fontFamily = ChakraPetch)
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = PulsarTextDim, modifier = Modifier.size(18.dp))
         }
     }
 }

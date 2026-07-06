@@ -23,6 +23,21 @@
 > pass-through); SAF-tree scan + ISO9660 unverified without a device/real ISO; wiring imported
 > games into the Library UI grid lands with the installed-games section.
 >
+> ✅ **P17 done (2026-07-06):** Onboarding, empty states, a11y, platform baseline (device-verified
+> bits — Accessibility Scanner + <2min-unaided are the P5 device pass). `AppPrefs` (core-ui,
+> SharedPreferences-backed Compose state; private backing + read-only getters to dodge a
+> generated-setter clash). **3-step skippable onboarding** (legal explainer → SAF games-folder
+> pick → controller check) gated by `onboardingSeen` (Boot → Onboarding first-run → Library).
+> **OLED-black theme** (`PulsarTheme(oledBlack)` swaps base to true black; live via AppPrefs
+> state) + Settings APPEARANCE toggle. **Per-app language** (System/English/日本語, persisted +
+> applied via platform `LocaleManager` on API33+). **Teaching library empty state**
+> (browse/import, distinct offline copy). **Predictive back → pause menu** (manifest
+> `enableOnBackInvokedCallback` + PlayerScreen BackHandlers: back opens quick menu, second back
+> closes it). a11y: content descriptions on nav/onboarding actions. OnboardingPrefsTest: the
+> once-only gate + OLED/language pref persistence across process re-init — **OK (2)**; full
+> suite **OK (51 tests)**. Deferred to P5 device: Accessibility Scanner sweep, TalkBack/focus-
+> order pass, edge-to-edge cutout polish.
+>
 > ✅ **P16 done (2026-07-06):** Auth + cloud saves with 3-way conflict UX (emulator-provable
 > portion; two-physical-device collide test → P5 device session). **Anonymous-first auth:**
 > enabled anon sign-ins via the Management API (PAT from Cred Manager, my Supabase mandate),

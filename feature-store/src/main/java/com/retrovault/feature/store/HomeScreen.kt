@@ -38,7 +38,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.VideogameAsset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -161,6 +164,8 @@ fun HomeScreen(
                     .height(220.dp),
                 contentAlignment = Alignment.Center
             ) { CircularProgressIndicator(color = MaterialTheme.colorScheme.primary) }
+        } else if (games.isEmpty()) {
+            LibraryEmptyState(offline = offline, onImport = { importLauncher.launch(arrayOf("*/*")) })
         } else {
             Column(
                 Modifier.padding(horizontal = 22.dp),
@@ -179,6 +184,52 @@ fun HomeScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+/** Teaching empty state: explains what to do rather than showing a blank grid. */
+@Composable
+private fun LibraryEmptyState(offline: Boolean, onImport: () -> Unit) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 34.dp, vertical = 40.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(
+            Icons.Filled.VideogameAsset, contentDescription = null,
+            tint = PulsarTextDimmer, modifier = Modifier.size(52.dp)
+        )
+        Spacer(Modifier.height(16.dp))
+        Text(
+            if (offline) "Can't reach the store" else "Your library is empty",
+            fontFamily = ChakraPetch, fontWeight = FontWeight.Bold, fontSize = 18.sp,
+            color = PulsarText, textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            if (offline)
+                "Check your connection to browse the catalog. You can still import and play " +
+                    "your own game backups from this device."
+            else
+                "Browse the store for free, legal homebrew, or import your own PSP game backups " +
+                    "from your device to get started.",
+            fontSize = 13.sp, lineHeight = 20.sp, color = PulsarTextDim, textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(20.dp))
+        Row(
+            Modifier
+                .clip(RoundedCornerShape(16.dp))
+                .background(PulsarSurface2)
+                .border(1.dp, PulsarStroke, RoundedCornerShape(16.dp))
+                .clickable(onClick = onImport)
+                .padding(horizontal = 22.dp, vertical = 13.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(9.dp)
+        ) {
+            Icon(Icons.Filled.FolderOpen, null, tint = PulsarText, modifier = Modifier.size(19.dp))
+            Text("Import a game", color = PulsarText, fontFamily = ChakraPetch, fontSize = 13.sp)
         }
     }
 }

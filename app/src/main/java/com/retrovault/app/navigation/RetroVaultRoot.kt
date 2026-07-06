@@ -39,6 +39,7 @@ import com.retrovault.feature.store.ControlsScreen
 import com.retrovault.feature.store.GameDetailScreen
 import com.retrovault.feature.player.EmulatorActivity
 import com.retrovault.feature.store.HomeScreen
+import com.retrovault.feature.store.OnboardingScreen
 import com.retrovault.feature.store.SavesScreen
 import com.retrovault.feature.store.SettingsScreen
 
@@ -66,8 +67,18 @@ fun RetroVaultRoot() {
         ) {
             composable(Destination.Boot.route) {
                 BootScreen(onFinished = {
-                    navController.navigate(Destination.Library.route) {
+                    val next = if (com.retrovault.core.ui.AppPrefs.onboardingSeen)
+                        Destination.Library.route else Destination.Onboarding.route
+                    navController.navigate(next) {
                         popUpTo(Destination.Boot.route) { inclusive = true }
+                    }
+                })
+            }
+            composable(Destination.Onboarding.route) {
+                OnboardingScreen(onFinish = {
+                    com.retrovault.core.ui.AppPrefs.setOnboardingSeen(true)
+                    navController.navigate(Destination.Library.route) {
+                        popUpTo(Destination.Onboarding.route) { inclusive = true }
                     }
                 })
             }

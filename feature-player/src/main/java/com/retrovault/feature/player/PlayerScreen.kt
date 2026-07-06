@@ -97,6 +97,10 @@ fun PlayerScreen(
         if (menuRequests > 0) showMenu = true
     }
     val running = session.status == CoreStatus.RUNNING
+    // Predictive back: the system back gesture opens the pause/quick menu; a second back
+    // (with the menu open) dismisses it. Quitting is an explicit menu action.
+    androidx.activity.compose.BackHandler(enabled = running && !showMenu && !showSlots) { showMenu = true }
+    androidx.activity.compose.BackHandler(enabled = showMenu) { showMenu = false }
     val ctx = LocalContext.current
     val statusMsg = when {
         running -> null

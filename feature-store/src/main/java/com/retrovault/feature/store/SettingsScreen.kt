@@ -62,7 +62,7 @@ import androidx.compose.material.icons.filled.Search
 import com.retrovault.core.model.GameSystem
 import com.retrovault.download.BiosStatus
 import com.retrovault.download.RomImporter
-import com.retrovault.billing.LocalBillingManager
+import com.retrovault.billing.createBillingManager
 import com.retrovault.settings.Category
 import com.retrovault.settings.DeviceClass
 import com.retrovault.settings.Origin
@@ -125,7 +125,10 @@ fun SettingsScreen(gameKey: String? = null, gameTitle: String? = null) {
     val ps1BiosInstalled = remember(biosTick) { BiosStatus.isInstalled(context, GameSystem.PS1) }
     val ps2BiosInstalled = remember(biosTick) { BiosStatus.isInstalled(context, GameSystem.PS2) }
 
-    val billing = remember { LocalBillingManager(context) }
+    // Flavor-resolved: PlayBillingManager (full) or FreeBillingManager (foss). Main never names a
+    // proprietary type — createBillingManager is declared in each flavor's source set.
+    val billing = remember { createBillingManager(context) }
+    val activity = context.findActivity()
     var goldTick by remember { mutableIntStateOf(0) }
     val isGold = remember(goldTick) { billing.isGold }
 
@@ -147,9 +150,10 @@ fun SettingsScreen(gameKey: String? = null, gameTitle: String? = null) {
         Spacer(Modifier.height(14.dp))
         SearchField(query) { query = it }
 
-        if (gameKey == null) {
+        // Hidden entirely in foss (purchaseSupported == false) — no upgrade path there.
+        if (gameKey == null && billing.purchaseSupported) {
             Section("PULSAR GOLD") {
-                GoldRow(isGold) { if (!isGold) { billing.purchaseGold(); goldTick++ } }
+                GoldRow(isGold) { if (!isGold && activity != null) { billing.purchaseGold(activity); goldTick++ } }
             }
         }
 

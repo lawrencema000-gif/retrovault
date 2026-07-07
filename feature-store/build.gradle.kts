@@ -14,6 +14,14 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true }
+
+    // P21 distribution split — carries the dimension so `foss` propagates app -> feature-store ->
+    // data-billing. The full-only AdMob/UMP deps live in fullImplementation; foss AdBanner is empty.
+    flavorDimensions += "distribution"
+    productFlavors {
+        create("full") { dimension = "distribution"; isDefault = true }
+        create("foss") { dimension = "distribution" }
+    }
 }
 
 dependencies {
@@ -36,6 +44,10 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.activity.compose)
     implementation(libs.coil.compose)
+
+    // Proprietary, full-only: AdMob + UMP consent. `foss` gets neither (its AdBanner is empty).
+    "fullImplementation"(libs.play.services.ads)
+    "fullImplementation"(libs.user.messaging.platform)
 
     debugImplementation(libs.androidx.ui.tooling)
 }

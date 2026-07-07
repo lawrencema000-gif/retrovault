@@ -22,6 +22,16 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // P21 distribution split. `full` = Play Store (Play Billing + AdMob); `foss` = F-Droid/GPL with
+    // ZERO proprietary deps. The dimension is declared here + in :feature-store + :data-billing so
+    // variant-aware resolution picks foss all the way down. Instrumented tests run on fullDebug
+    // (isDefault) via :app:connectedFullDebugAndroidTest.
+    flavorDimensions += "distribution"
+    productFlavors {
+        create("full") { dimension = "distribution"; isDefault = true }
+        create("foss") { dimension = "distribution" }
+    }
+
     packaging {
         jniLibs {
             // Extract native libs to disk so cores can be dlopen-ed by absolute path.
@@ -88,4 +98,39 @@ dependencies {
     androidTestImplementation(libs.androidx.test.core)
     androidTestImplementation(libs.okhttp)
     androidTestImplementation(libs.kotlinx.coroutines.android)
+}
+
+// P21 acceptance gate: the `foss` variant must resolve to ZERO proprietary Google deps (F-Droid/GPL
+// distribution). Resolves the full transitive foss runtime classpaths and fails the build if any
+// billingclient / play-services / UMP artifact leaks in. The AGP variant configurations don't exist
+// until AGP's own afterEvaluate has run, so register in afterEvaluate; the resolved-artifacts
+// Provider is captured there (no Project access in doLast) for configuration-cache safety.
+afterEvaluate {
+    val proprietaryGroups = setOf(
+        "com.android.billingclient",
+        "com.google.android.gms",   // covers play-services-ads*; F-Droid bans this whole group
+        "com.google.android.ump",
+    )
+    listOf("fossDebugRuntimeClasspath", "fossReleaseRuntimeClasspath").forEach { cfgName ->
+        val cfg = configurations.findByName(cfgName) ?: return@forEach
+        // Walk the resolved dependency GRAPH (module coordinates), not artifacts — this needs no
+        // artifactType and so avoids the android-res/jar/symbol variant-ambiguity of artifact views.
+        val root = cfg.incoming.resolutionResult.rootComponent
+        val verify = tasks.register("verify${cfgName.replaceFirstChar(Char::uppercase)}") {
+            doLast {
+                val seen = mutableSetOf<String>()
+                val leaks = mutableListOf<String>()
+                fun walk(c: org.gradle.api.artifacts.result.ResolvedComponentResult) {
+                    (c.id as? org.gradle.api.artifacts.component.ModuleComponentIdentifier)
+                        ?.takeIf { it.group in proprietaryGroups }
+                        ?.let { leaks += "${it.group}:${it.module}:${it.version}" }
+                    c.dependencies.filterIsInstance<org.gradle.api.artifacts.result.ResolvedDependencyResult>()
+                        .forEach { if (seen.add(it.selected.id.displayName)) walk(it.selected) }
+                }
+                walk(root.get())
+                require(leaks.isEmpty()) { "FOSS variant leaked proprietary deps: $leaks" }
+            }
+        }
+        tasks.named("check") { dependsOn(verify) }
+    }
 }

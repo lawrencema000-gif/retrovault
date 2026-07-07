@@ -3,7 +3,33 @@
 > **✅ All 10 stages' foundations laid and building green.**
 > **📋 Execution now follows [`MASTERPLAN.md`](MASTERPLAN.md) — 27 steps (P1–P27), one per session.**
 > **📍 CURRENT STEP → P5: First light on the user's physical device [DEVICE SESSION — everything is staged]**
-> **   (code steps P6–P17 + P19 + P20 done on the emulator; P18 + P21–P27 remain.)**
+> **   (code steps P6–P17 + P19 + P20 + P21 done on the emulator; P18 + P22–P27 remain.)**
+>
+> ✅ **P21 done (2026-07-07):** Monetization — AdMob + Pulsar Gold (Play Billing) + a proprietary-free
+> `foss` flavor. **Product-flavor dimension `distribution`** (`full`/`foss`) on exactly the 3 modules
+> on the monetization path — `:app → :feature-store → :data-billing` — so variant-aware resolution
+> propagates `foss` all the way down; the other 11 modules stay dimensionless (and `feature-player`
+> not depending on feature-store **structurally enforces "ads never in-game"**). Proprietary deps
+> (`billing-ktx` 7.1.1, `play-services-ads` 23.6.0, `user-messaging-platform` 3.1.0) live ONLY in
+> `fullImplementation` → foss classpaths get **zero**. **Billing:** `BillingManager` interface in main
+> + flavor factory `createBillingManager()` — `full` = **PlayBillingManager** (Play Billing v7: connect,
+> queryProductDetails, launchBillingFlow, PurchasesUpdatedListener, **server-verify the token BEFORE
+> granting**, acknowledge, restore=queryPurchasesAsync so Gold survives reinstall); `foss` =
+> **FreeBillingManager** (Gold unavailable, free tier intact). **Ads:** `AdBanner` composable declared
+> per-flavor (full = AdMob `AdView` in library chrome, hidden for Gold, **UMP consent before init**;
+> foss = empty), wired into the library only. **Server-verified entitlement:** `supabase/functions/
+> verify-purchase` (mints a Play-service-account OAuth token → Play Developer API
+> `purchases.products.get`, grants only when `purchaseState===0`; **fails closed** without the SA
+> secret). **`:app:verifyFoss{Debug,Release}RuntimeClasspath`** Gradle gate walks the resolved foss
+> dependency graph and fails the build on any Google proprietary group — wired into `check`. The
+> design→adversarial-verify Workflow caught 5 issues pre-code (the `LocalBillingManager` interface-break,
+> a manifest-placeholder timing risk → hardcoded the test AdMob id, task-rename docs). **Acceptance
+> proven:** foss build has ZERO proprietary deps (mechanically verified: `fossDebugRuntimeClasspath`
+> grep empty; foss merged manifest has no ads/BILLING) while full carries all three + the AdMob
+> APPLICATION_ID; full suite **OK (54 tests)** on `connectedFullDebugAndroidTest`. **⚠️ STAGED (needs
+> Play Console + merchant + AdMob account + a Play service-account secret):** the live "test purchase
+> survives reinstall" acceptance, real AdMob ids (test ids used now), deploying verify-purchase.
+> DISTRIBUTION.md updated (bundleFullRelease / assembleFossRelease).
 >
 > ✅ **P20 done (2026-07-07):** RetroAchievements (hardcore-compliant). **rcheevos v11.6.0 (MIT)
 > vendored** (`core-emulator/src/main/cpp/rcheevos/`, 30 `.c`, provenance recorded) + compiled into

@@ -1,29 +1,25 @@
 package com.retrovault.billing
 
-import android.content.Context
+import android.app.Activity
 
 /**
- * Purchase surface for Pulsar Gold. The functional pass wraps Google Play Billing (v7+), using the
- * US external-billing option (Epic v. Google, sunsets Nov 2027) where it lowers the take rate.
- * For now [LocalBillingManager] flips the local entitlement so Gold-gated UI is exercisable.
+ * Purchase surface for Pulsar Gold. The concrete impl is chosen by build flavor:
+ *   - `full`: [com.retrovault.billing.createBillingManager] returns a real Play Billing v7 client
+ *     that launches the purchase, SERVER-VERIFIES the token, then mirrors the entitlement locally.
+ *   - `foss`: returns a no-op that reports Gold unavailable (no proprietary deps, free tier only).
+ *
+ * Call [createBillingManager] (declared per-flavor) — main code never references a proprietary type.
  */
 interface BillingManager {
+    /** Whether Pulsar Gold is currently entitled (a local mirror of the verified Play purchase). */
     val isGold: Boolean
-    fun purchaseGold()
+
+    /** False in `foss` (no purchase path) — store chrome hides the upgrade row when false. */
+    val purchaseSupported: Boolean
+
+    /** Launch the Play purchase flow. Needs an [Activity]; a no-op where purchase isn't supported. */
+    fun purchaseGold(activity: Activity)
+
+    /** Re-hydrate the entitlement from owned purchases (survives reinstall). No-op in `foss`. */
     fun restore()
-}
-
-class LocalBillingManager(context: Context) : BillingManager {
-    private val entitlements = Entitlements(context)
-
-    override val isGold: Boolean get() = entitlements.isGold
-
-    // Dev stub — the real flow launches the Play purchase and verifies the token server-side.
-    override fun purchaseGold() {
-        entitlements.isGold = true
-    }
-
-    override fun restore() {
-        // Functional pass: query Play for owned products and re-sync the entitlement.
-    }
 }

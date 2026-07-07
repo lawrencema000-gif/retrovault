@@ -12,4 +12,9 @@ object MonetizationConfig {
     // Placeholders — replaced with real AdMob IDs before shipping the ad-supported free tier.
     const val ADMOB_APP_ID = "ca-app-pub-0000000000000000~0000000000"
     const val ADMOB_INTERSTITIAL_ID = "ca-app-pub-0000000000000000/0000000000"
+
+    // Server-side purchase verification (full flavor): a Supabase edge function calls the Play
+    // Developer API with a service account. verify_jwt=false, so no auth header is needed.
+    const val VERIFY_PURCHASE_URL =
+        "https://mxasjicdkryaqugrccdo.supabase.co/functions/v1/verify-purchase"
 }

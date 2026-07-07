@@ -31,10 +31,20 @@ subscription). Google Play Billing everywhere except the US external-billing car
 Google, sunsets Nov 1 2027). GPL source is never gated behind payment. F-Droid build is
 donation-only (no proprietary SDKs).
 
-## Build variants (planned, final pass)
+## Build variants (P21 — live)
 
-- `full` — Play/direct: AdMob + Play Billing.
-- `foss` — F-Droid: no proprietary SDKs, donation link only.
+Product-flavor dimension `distribution`, declared in `:app`, `:feature-store`, `:data-billing`:
 
-Release: `./gradlew :app:bundleRelease` (Play AAB) / `:app:assembleRelease` (APK) with a signing
-config from a keystore kept **out of git**.
+- `full` — Play/direct: AdMob + Play Billing + UMP consent (proprietary Google deps). `isDefault`.
+- `foss` — F-Droid/GPL: **zero proprietary deps** (Play Billing, play-services-ads, UMP all stripped);
+  Gold unavailable, ads off, free tier fully functional. Enforced by the `:app:verifyFoss*RuntimeClasspath`
+  Gradle gate (wired into `check`), which fails the build if any `com.android.billingclient` /
+  `com.google.android.gms` / `com.google.android.ump` artifact leaks into a foss classpath.
+
+Release builds:
+- Play AAB: `./gradlew :app:bundleFullRelease`
+- F-Droid / direct GPL APK: `./gradlew :app:assembleFossRelease`
+
+…with a signing config from a keystore kept **out of git**. Instrumented tests run on the full
+variant: `./gradlew :app:connectedFullDebugAndroidTest` (plain `connectedDebugAndroidTest` no longer
+exists once flavors are declared).

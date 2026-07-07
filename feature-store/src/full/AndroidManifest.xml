@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- full flavor only: AdMob application id. Merges into the app for full* variants; the foss
+     flavor has no such manifest, so no ads metadata (and no proprietary deps) reach foss builds.
+     This is the AdMob SAMPLE app id; replace with the real one before shipping the ad tier. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-3940256099942544~3339008733" />
+    </application>
+</manifest>

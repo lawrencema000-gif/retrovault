@@ -122,7 +122,7 @@ std::atomic<bool> g_cheatsDirty{false};
 
 // Run-loop ops: posted from any thread, executed by the run-loop thread between frames
 // (retro_serialize/unserialize must run on the emu/GL thread — PPSSPP requires it).
-enum class OpType { SAVE, LOAD, SCREENSHOT, REWIND_STEP };
+enum class OpType { SAVE, LOAD, SCREENSHOT, REWIND_STEP, SHADER_SELFTEST };
 std::mutex g_opMutex;
 std::condition_variable g_opCv;
 std::atomic<bool> g_opPending{false};
@@ -130,6 +130,7 @@ OpType g_opType = OpType::SAVE;
 std::string g_opStatePath, g_opFramePath;
 bool g_opDone = true;
 bool g_opOk = false;
+int g_opResultInt = 0;   // integer return channel for ops that produce one (SHADER_SELFTEST)
 
 // Rewind: interval snapshots into an in-RAM ring, budgeted by bytes. Owned by the run-loop
 // thread; config + count cross threads via atomics.
@@ -583,6 +584,11 @@ void processStateOp() {
         case OpType::LOAD: ok = doLoadStateOnThread(statePath); break;
         case OpType::SCREENSHOT: ok = doScreenshotOnThread(framePath); break;
         case OpType::REWIND_STEP: ok = doRewindStepOnThread(); break;
+        case OpType::SHADER_SELFTEST:
+            // Needs the live GL context on this (render) thread; sets the int return channel.
+            g_opResultInt = g_video.shaderSelfTest();
+            ok = true;
+            break;
     }
     {
         std::lock_guard<std::mutex> lk(g_opMutex);
@@ -1117,6 +1123,42 @@ Java_com_retrovault_emulator_LibretroBridge_nativeApplyCheats(JNIEnv* env, jobje
 JNIEXPORT jboolean JNICALL
 Java_com_retrovault_emulator_LibretroBridge_nativeCoreSupportsCheats(JNIEnv*, jobject) {
     return (g_core.retro_cheat_set && g_core.retro_cheat_reset) ? JNI_TRUE : JNI_FALSE;
+}
+
+// ---- display polish (P19): rotation / scale mode / stacked post-shaders ----
+
+JNIEXPORT void JNICALL
+Java_com_retrovault_emulator_LibretroBridge_nativeSetDisplayConfig(
+    JNIEnv*, jobject, jint rotationDeg, jint scaleMode, jint pass1, jint pass2,
+    jfloat scanlineIntensity, jfloat maskIntensity, jfloat sharpenAmount) {
+    DisplayConfig cfg;
+    cfg.rotationDeg = (int)rotationDeg;
+    int sm = (int)scaleMode;
+    cfg.scaleMode = sm == 1 ? ScaleMode::Stretch : (sm == 2 ? ScaleMode::Integer : ScaleMode::Fit);
+    cfg.pass1 = (int)pass1;
+    cfg.pass2 = (int)pass2;
+    cfg.scanlineIntensity = (float)scanlineIntensity;
+    cfg.maskIntensity = (float)maskIntensity;
+    cfg.sharpenAmount = (float)sharpenAmount;
+    g_video.setDisplayConfig(cfg); // thread-safe; latched and applied on the render thread
+}
+
+// Compile+link every built-in present program on the render thread and return the success
+// bitmask (bit 0 = base, bits 1..3 = post shaders). Requires a running session.
+JNIEXPORT jint JNICALL
+Java_com_retrovault_emulator_LibretroBridge_nativeShaderSelfTest(JNIEnv*, jobject) {
+    if (!g_running.load()) return 0;
+    std::unique_lock<std::mutex> lk(g_opMutex);
+    if (g_opPending.load()) return 0; // one op at a time
+    g_opType = OpType::SHADER_SELFTEST;
+    g_opStatePath.clear();
+    g_opFramePath.clear();
+    g_opResultInt = 0;
+    g_opDone = false;
+    g_opOk = false;
+    g_opPending.store(true, std::memory_order_release);
+    bool done = g_opCv.wait_for(lk, std::chrono::seconds(10), [] { return g_opDone; });
+    return (done && g_opOk) ? (jint)g_opResultInt : 0;
 }
 
 } // extern "C"

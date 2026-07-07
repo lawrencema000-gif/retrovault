@@ -118,8 +118,10 @@ class CheatTest {
     @Test
     fun cheatsApplyLiveToRunningCore() {
         assertTrue(LibretroBridge.available)
-        val playable = GameInstaller.installedPlayable(ctx, GameSystem.PSP, "battlegrounds-3")
-        assertNotNull("battlegrounds-3 not installed (FirstLightTest provisions it)", playable)
+        // Order-independent: provision BG3 ourselves rather than depend on FirstLightTest (which
+        // sorts later) having installed it — app data starts clean on a fresh device.
+        val playable = TestGames.ensureBattlegrounds3(ctx)
+        assertNotNull("battlegrounds-3 unavailable (live catalog/download failed)", playable)
 
         val core = File(ctx.applicationInfo.nativeLibraryDir, "ppsspp_libretro_android.so")
         val systemDir = File(ctx.filesDir, "system").apply { mkdirs() }

@@ -3,6 +3,30 @@
 > **✅ All 10 stages' foundations laid and building green.**
 > **📋 Execution now follows [`MASTERPLAN.md`](MASTERPLAN.md) — 27 steps (P1–P27), one per session.**
 > **📍 CURRENT STEP → P5: First light on the user's physical device [DEVICE SESSION — everything is staged]**
+> **   (code steps P6–P17 + P19 done on the emulator; P18 + P20–P27 remain.)**
+>
+> ✅ **P19 done (2026-07-07):** Display polish — stackable post-shaders, rotation, scale modes,
+> gallery screenshots. **Native present pipeline rebuilt** (`video_gl`): the game frame resolves
+> into a clean native-res **scene FBO** (single V-flip, CLAMP_TO_EDGE) then runs **0–2 stacked
+> post passes** (ping-pong) — only the final blit rotates + scales. **Three shaders authored +
+> adversarially verified** (an 8-agent workflow; the verifier caught + fixed real bugs — a
+> mediump `sin()` phase-precision blow-up in the CRT pass, and an RCAS overshoot-clamp that
+> deleted isolated highlights): **CRT scanlines** (highp-guarded, fract-wrapped phase + aperture
+> mask), **FSR 1.0 RCAS sharpen** (5-tap, ring-free), **sharp-bilinear** (Themaister). Adjustable
+> uniforms (scanline/mask/sharpen strength). **Rotation via geometry** (`uPosRot` mat2, exact 90°
+> multiples) — keeps screen-space scanlines display-aligned and dodges the double-flip trap;
+> **90/270 swap the letterbox aspect** for vertical-shmup TATE. **Scale modes** fit / integer
+> (pixel-perfect, **FIT fallback on downscale**) / stretch. State hygiene per frame (scissor off
+> **before** clear, depth/cull/blend off, black clear). JNI `nativeSetDisplayConfig` +
+> `nativeShaderSelfTest` (compiles all programs on the render thread → bitmask); 6 new VIDEO
+> settings (rotation/scale/shader/scanline/sharpen + anisotropic) resolver-driven via
+> `applyDisplay`. **Screenshots now publish to the gallery** (MediaStore → Pictures/Pulsar) +
+> share-sheet from the player. ShaderTest (testgl core): all 4 programs compile+link, CRT+FSR
+> stack presents under 90°+integer with live uniform re-apply, screenshot queryable in MediaStore
+> — **OK**; full suite **OK (52 tests)**. **🔧 Fixed a latent suite flake:** CheatTest depended on
+> FirstLightTest (sorts later) having installed Battlegrounds 3 — green only when it lingered from
+> a prior run; it now self-provisions BG3 (shared `TestGames` helper) so the suite is
+> order-independent. Deferred to P5 device: on-hardware CW/CCW 90-vs-270 confirm + real TATE feel.
 >
 > 🎆 **P5-prep done — FIRST LIGHT ACHIEVED ON EMULATOR (2026-07-04):** the real, license-verified
 > GPL-3.0 homebrew **Battlegrounds 3** (github.com/xfacter/battlegrounds3, mirrored with recorded

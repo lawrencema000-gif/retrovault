@@ -56,6 +56,74 @@ object PspSettings {
         coreVariable = "ppsspp_texture_scaling_level",
     )
 
+    // ---- display polish (P19): host present pass, not core options (coreVariable = null) ----
+
+    val DISPLAY_ROTATION = SettingDef.Choice(
+        key = "app.display.rotation",
+        title = "Screen rotation",
+        description = "Rotate the picture — e.g. 90° for a vertical-shmup TATE setup.",
+        category = Category.VIDEO,
+        options = listOf("0" to "None", "90" to "90° CW", "180" to "180°", "270" to "270° CW"),
+        defaultOption = "0",
+        coreVariable = null,
+    )
+
+    val DISPLAY_SCALE_MODE = SettingDef.Choice(
+        key = "app.display.scale_mode",
+        title = "Scaling",
+        description = "Fit keeps the aspect (letterbox); Integer is pixel-perfect; Stretch fills.",
+        category = Category.VIDEO,
+        options = listOf("fit" to "Fit (letterbox)", "integer" to "Integer (pixel-perfect)", "stretch" to "Stretch"),
+        defaultOption = "fit",
+        coreVariable = null,
+    )
+
+    val DISPLAY_SHADER = SettingDef.Choice(
+        key = "app.display.shader",
+        title = "Display shader",
+        description = "Post-processing over the final image (sharpen, CRT scanlines, or both).",
+        category = Category.VIDEO,
+        options = listOf(
+            "none" to "None",
+            "sharp_bilinear" to "Sharp bilinear",
+            "fsr_sharpen" to "FSR sharpen",
+            "scanline_crt" to "CRT scanlines",
+            "crt_fsr" to "CRT + FSR",
+        ),
+        defaultOption = "none",
+        coreVariable = null,
+    )
+
+    val DISPLAY_SCANLINE_INTENSITY = SettingDef.Choice(
+        key = "app.display.scanline_intensity",
+        title = "Scanline strength",
+        description = "How dark the CRT scanlines are (when a CRT shader is active).",
+        category = Category.VIDEO,
+        options = listOf("off" to "Off", "low" to "Low", "med" to "Medium", "high" to "High"),
+        defaultOption = "med",
+        coreVariable = null,
+    )
+
+    val DISPLAY_SHARPEN_AMOUNT = SettingDef.Choice(
+        key = "app.display.sharpen_amount",
+        title = "Sharpen strength",
+        description = "Edge sharpening amount (when an FSR/sharpen shader is active).",
+        category = Category.VIDEO,
+        options = listOf("off" to "Off", "low" to "Low", "med" to "Medium", "high" to "High"),
+        defaultOption = "med",
+        coreVariable = null,
+    )
+
+    val ANISOTROPIC = SettingDef.Choice(
+        key = "psp.video.anisotropic",
+        title = "Anisotropic filtering",
+        description = "Sharpens textures viewed at an angle (floors, roads). Cheap on modern GPUs.",
+        category = Category.VIDEO,
+        options = listOf("0" to "Off", "1" to "2×", "2" to "4×", "3" to "8×", "4" to "16×"),
+        defaultOption = "0",
+        coreVariable = "ppsspp_anisotropic_filtering",
+    )
+
     val CPU_CORE = SettingDef.Choice(
         key = "psp.emulation.cpu_core",
         title = "CPU core",
@@ -126,7 +194,9 @@ object PspSettings {
     )
 
     val ALL: List<SettingDef> = listOf(
-        INTERNAL_RESOLUTION, FRAMESKIP, TEXTURE_FILTERING, TEXTURE_SCALING,
+        INTERNAL_RESOLUTION, FRAMESKIP, TEXTURE_FILTERING, TEXTURE_SCALING, ANISOTROPIC,
+        DISPLAY_ROTATION, DISPLAY_SCALE_MODE, DISPLAY_SHADER,
+        DISPLAY_SCANLINE_INTENSITY, DISPLAY_SHARPEN_AMOUNT,
         CPU_CORE, FAST_MEMORY, IGNORE_BAD_MEMORY,
         GRAPHICS_BACKEND, WIFI_ONLY_DOWNLOADS, REWIND_ENABLED, HAPTICS,
     )

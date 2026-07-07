@@ -117,6 +117,8 @@ class EmulatorActivity : ComponentActivity() {
             com.retrovault.settings.GameDb.settingsFor(applicationContext, serial)
         }
         settings.applyToCore(gameKeyForSettings)
+        // Host present-pass settings (rotation / scale / post-shader stack) — applied per frame.
+        settings.applyDisplay(gameKeyForSettings)
 
         // GameDB flag: some titles corrupt when save-stated — respect PPSSPP's judgment.
         saveStatesRecommended =
@@ -204,9 +206,20 @@ class EmulatorActivity : ComponentActivity() {
                         saveStates = saveStates,
                         onScreenshot = {
                             lifecycleScope.launch {
-                                com.retrovault.saves.Screenshots.capture(
+                                val shot = com.retrovault.saves.Screenshots.capture(
                                     applicationContext, "${gameKey ?: "game"}-${System.currentTimeMillis()}"
                                 )
+                                shot?.galleryUri?.let { uri ->
+                                    val send = Intent(Intent.ACTION_SEND).apply {
+                                        type = "image/png"
+                                        putExtra(Intent.EXTRA_STREAM, uri)
+                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    }
+                                    runCatching {
+                                        startActivity(Intent.createChooser(send, "Share screenshot")
+                                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                                    }
+                                }
                             }
                         },
                         onCheats = { showCheats = true },

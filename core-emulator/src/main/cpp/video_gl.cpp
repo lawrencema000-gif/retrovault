@@ -24,9 +24,10 @@ attribute vec2 aPos;
 attribute vec2 aTex;
 varying vec2 vTex;
 uniform float uFlipY;
+uniform mat2 uPosRot;
 void main() {
     vTex = vec2(aTex.x, mix(aTex.y, 1.0 - aTex.y, uFlipY));
-    gl_Position = vec4(aPos, 0.0, 1.0);
+    gl_Position = vec4(uPosRot * aPos, 0.0, 1.0);
 }
 )";
 
@@ -40,6 +41,150 @@ void main() {
     gl_FragColor = mix(vec4(c.rgb, 1.0), vec4(c.bgr, 1.0), uSwapRB);
 }
 )";
+
+// Post passes sample an already-oriented, color-corrected native-res scene texture (top-left
+// origin) with identity UVs; rotation is applied to the on-screen geometry via uPosRot so that
+// screen-space effects (scanlines) stay aligned to the physical display, not the game axis.
+const char* kPostVertexShader = R"(#version 100
+attribute vec2 aPos;
+attribute vec2 aTex;
+varying vec2 vTex;
+uniform mat2 uPosRot;
+void main() {
+    vTex = aTex;
+    gl_Position = vec4(uPosRot * aPos, 0.0, 1.0);
+}
+)";
+
+// --- P19 post-shader fragment sources (authored + adversarially verified, GLSL ES 1.00) -------
+
+// CRT scanlines + subtle aperture mask. highp-guarded, fract-wrapped phase (mediump-safe).
+const char* kFragScanlineCrt = R"(#version 100
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+varying vec2 vTex;
+uniform sampler2D uSampler;
+uniform vec2 uTexel;
+uniform vec2 uOutputSize;
+uniform float uScanlineIntensity;
+uniform float uMaskIntensity;
+void main() {
+    vec4 src = texture2D(uSampler, vTex);
+    vec3 col = src.rgb;
+    float screenY = vTex.y * uOutputSize.y;
+    float wave = sin(fract(screenY) * 3.14159265);
+    float lineMask = wave * wave;
+    float si = clamp(uScanlineIntensity, 0.0, 1.0);
+    float scan = 1.0 - si * (1.0 - lineMask);
+    col *= scan;
+    float mi = clamp(uMaskIntensity, 0.0, 1.0);
+    float screenX = vTex.x * uOutputSize.x;
+    float phase = floor(fract(screenX / 3.0) * 3.0);
+    vec3 maskTint = vec3(0.85);
+    if (phase < 0.5) { maskTint.r = 1.0; }
+    else if (phase < 1.5) { maskTint.g = 1.0; }
+    else { maskTint.b = 1.0; }
+    vec3 mask = mix(vec3(1.0), maskTint, mi);
+    col *= mask;
+    float loss = si * 0.5 + mi * 0.15;
+    col *= 1.0 + loss * 0.6;
+    col = clamp(col, 0.0, 1.0);
+    gl_FragColor = vec4(col, src.a);
+}
+)";
+
+// FSR 1.0 RCAS contrast-adaptive sharpen (5-tap). Overshoot clamp uses the FULL 5-tap envelope
+// (center included) so isolated highlights survive.
+const char* kFragFsrSharpen = R"(#version 100
+precision mediump float;
+varying vec2 vTex;
+uniform sampler2D uSampler;
+uniform vec2 uTexel;
+uniform float uSharpenAmount;
+const float RCAS_LIMIT = 0.1875;
+const float EPS_POS = 1.0 / 32768.0;
+const float EPS_NEG = -1.0 / 32768.0;
+float rcasLuma(vec3 c) { return c.g + 0.5 * (c.r + c.b); }
+void main() {
+    vec4 eRGBA = texture2D(uSampler, vTex);
+    vec3 e = eRGBA.rgb;
+    vec3 b = texture2D(uSampler, vTex + vec2( 0.0,      -uTexel.y)).rgb;
+    vec3 d = texture2D(uSampler, vTex + vec2(-uTexel.x,   0.0    )).rgb;
+    vec3 f = texture2D(uSampler, vTex + vec2( uTexel.x,   0.0    )).rgb;
+    vec3 h = texture2D(uSampler, vTex + vec2( 0.0,       uTexel.y)).rgb;
+    vec3 mn4 = min(min(b, d), min(f, h));
+    vec3 mx4 = max(max(b, d), max(f, h));
+    vec3 hitMin = mn4 / max(4.0 * mx4, vec3(EPS_POS));
+    vec3 hitMax = (vec3(1.0) - mx4) / min(4.0 * mn4 - 4.0, vec3(EPS_NEG));
+    vec3 lobeRGB = max(-hitMin, hitMax);
+    float lobe = max(-RCAS_LIMIT, min(max(lobeRGB.r, max(lobeRGB.g, lobeRGB.b)), 0.0));
+    float bL = rcasLuma(b);
+    float dL = rcasLuma(d);
+    float eL = rcasLuma(e);
+    float fL = rcasLuma(f);
+    float hL = rcasLuma(h);
+    float rng = max(max(max(bL, dL), max(fL, hL)), eL)
+              - min(min(min(bL, dL), min(fL, hL)), eL);
+    float nz = 0.25 * (bL + dL + fL + hL) - eL;
+    nz = clamp(abs(nz) / max(rng, EPS_POS), 0.0, 1.0);
+    nz = 1.0 - 0.5 * nz;
+    lobe *= nz;
+    lobe *= clamp(uSharpenAmount, 0.0, 1.0);
+    float rcpL = 1.0 / (4.0 * lobe + 1.0);
+    vec3 c = (e + lobe * (b + d + f + h)) * rcpL;
+    vec3 mnAll = min(mn4, e);
+    vec3 mxAll = max(mx4, e);
+    c = clamp(c, mnAll, mxAll);
+    gl_FragColor = vec4(c, eRGBA.a);
+}
+)";
+
+// Themaister sharp-bilinear: crisp texel edges on integer-ish upscale. Requires GL_LINEAR.
+const char* kFragSharpBilinear = R"(#version 100
+precision mediump float;
+varying vec2 vTex;
+uniform sampler2D uSampler;
+uniform vec2 uTexel;
+uniform vec2 uOutputSize;
+void main() {
+    vec2 texel = max(uTexel, vec2(1e-6));
+    vec2 sourceSize = 1.0 / texel;
+    vec2 scale = max(uOutputSize * texel, vec2(1.0));
+    vec2 texelCoord = vTex * sourceSize;
+    vec2 texelFloor = floor(texelCoord);
+    vec2 frac = texelCoord - texelFloor;
+    vec2 regionRange = 0.5 - 0.5 / scale;
+    vec2 centerDist = frac - 0.5;
+    vec2 ramp = (centerDist - clamp(centerDist, -regionRange, regionRange)) * scale + 0.5;
+    vec2 modTexel = texelFloor + ramp;
+    vec2 uv = modTexel * texel;
+    gl_FragColor = texture2D(uSampler, uv);
+}
+)";
+
+const char* kPostFragForId(int id) {
+    switch (id) {
+        case kPostScanlineCrt:  return kFragScanlineCrt;
+        case kPostFsrSharpen:   return kFragFsrSharpen;
+        case kPostSharpBilinear:return kFragSharpBilinear;
+        default:                return nullptr;
+    }
+}
+
+// Column-major mat2 for an image rotation by a multiple of 90°, snapped to exact {0,±1}.
+void rotationMat2(int deg, float m[4]) {
+    int d = ((deg % 360) + 360) % 360;
+    float c = 1.0f, s = 0.0f;
+    if (d == 90)  { c = 0.0f;  s = 1.0f; }
+    else if (d == 180) { c = -1.0f; s = 0.0f; }
+    else if (d == 270) { c = 0.0f;  s = -1.0f; }
+    // uPosRot = [[c,-s],[s,c]] applied as uPosRot*aPos; GLSL mat2 is column-major.
+    m[0] = c;  m[1] = s;   // column 0
+    m[2] = -s; m[3] = c;   // column 1
+}
 
 GLuint compileShader(GLenum type, const char* src) {
     GLuint s = glCreateShader(type);
@@ -183,6 +328,12 @@ void VideoGL::shutdown() {
     if (swTexture_) glDeleteTextures(1, &swTexture_);
     if (program_) glDeleteProgram(program_);
     if (vbo_) glDeleteBuffers(1, &vbo_);
+    for (auto& p : post_) if (p.program) glDeleteProgram(p.program);
+    if (postVbo_) glDeleteBuffers(1, &postVbo_);
+    if (sceneTex_) glDeleteTextures(1, &sceneTex_);
+    if (sceneFbo_) glDeleteFramebuffers(1, &sceneFbo_);
+    if (pingTex_) glDeleteTextures(1, &pingTex_);
+    if (pingFbo_) glDeleteFramebuffers(1, &pingFbo_);
     if (windowSurface_ != EGL_NO_SURFACE) eglDestroySurface(display_, windowSurface_);
     if (pbufferSurface_ != EGL_NO_SURFACE) eglDestroySurface(display_, pbufferSurface_);
     if (context_ != EGL_NO_CONTEXT) eglDestroyContext(display_, context_);
@@ -210,7 +361,12 @@ void VideoGL::shutdown() {
     swTexIs565_ = false;
     program_ = 0;
     vbo_ = 0;
-    locPos_ = locTex_ = locSampler_ = locFlipY_ = locSwapRB_ = -1;
+    locPos_ = locTex_ = locSampler_ = locFlipY_ = locSwapRB_ = locPosRot_ = -1;
+    for (auto& p : post_) p = PostProgram{};
+    postBuilt_ = false;
+    postVbo_ = 0;
+    sceneFbo_ = sceneTex_ = 0; sceneW_ = sceneH_ = 0;
+    pingFbo_ = pingTex_ = 0; pingW_ = pingH_ = 0;
     hwEnabled_ = false;
     hwCb_ = retro_hw_render_callback{};
     contextResetDone_ = false;
@@ -387,6 +543,7 @@ bool VideoGL::ensureQuadPipeline() {
     locSampler_ = glGetUniformLocation(program_, "uSampler");
     locFlipY_ = glGetUniformLocation(program_, "uFlipY");
     locSwapRB_ = glGetUniformLocation(program_, "uSwapRB");
+    locPosRot_ = glGetUniformLocation(program_, "uPosRot");
 
     // x, y, u, v — fullscreen quad as a triangle strip
     const float verts[] = {
@@ -457,58 +614,88 @@ void VideoGL::uploadSoftwareFrame(const void* data, unsigned width, unsigned hei
     glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
 }
 
-void VideoGL::drawFrame() {
-    if (!ensureQuadPipeline() || !haveFrame_) {
-        glClearColor(0.03f, 0.04f, 0.07f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
+void VideoGL::resetPresentGlState() {
+    // The libretro core shares this context and may leave state enabled; never assume.
+    // Scissor MUST be disabled before any glClear or letterbox bars get clipped away.
+    glDisable(GL_SCISSOR_TEST);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_BLEND);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glClearColor(0.f, 0.f, 0.f, 1.f);
+    glActiveTexture(GL_TEXTURE0);
+}
+
+void VideoGL::computeViewport(float srcAspect, int intSrcW, int intSrcH, ScaleMode mode,
+                              int rotationDeg, int surfW, int surfH,
+                              int& vpX, int& vpY, int& vpW, int& vpH) {
+    const int d = ((rotationDeg % 360) + 360) % 360;
+    if (d == 90 || d == 270) {                  // 90/270 swap the displayed aspect + pixel dims
+        srcAspect = srcAspect > 0.f ? 1.f / srcAspect : 1.f;
+        const int t = intSrcW; intSrcW = intSrcH; intSrcH = t;
+    }
+    if (srcAspect <= 0.f) srcAspect = 1.f;
+
+    if (mode == ScaleMode::Stretch) {
+        vpX = 0; vpY = 0; vpW = surfW; vpH = surfH;
         return;
     }
+    if (mode == ScaleMode::Integer && intSrcW > 0 && intSrcH > 0 &&
+        surfW >= intSrcW && surfH >= intSrcH) {
+        int sx = surfW / intSrcW, sy = surfH / intSrcH;
+        int scale = sx < sy ? sx : sy;
+        if (scale >= 1) {
+            vpW = intSrcW * scale; vpH = intSrcH * scale;
+            vpX = (surfW - vpW) / 2; vpY = (surfH - vpH) / 2;
+            return;
+        }
+        // scale would be 0 (screen smaller than one native frame): fall through to FIT.
+    }
+    // FIT (letterbox / pillarbox), also the Integer-downscale fallback.
+    const float dstAspect = (float)surfW / (float)surfH;
+    if (dstAspect > srcAspect) {                 // screen wider than source -> pillarbox
+        vpH = surfH; vpW = (int)(surfH * srcAspect + 0.5f);
+    } else {                                     // screen taller -> letterbox
+        vpW = surfW; vpH = (int)(surfW / srcAspect + 0.5f);
+    }
+    if (vpW > surfW) vpW = surfW;
+    if (vpH > surfH) vpH = surfH;
+    vpX = (surfW - vpW) / 2; vpY = (surfH - vpH) / 2;
+}
 
-    const int sw = stats.surfaceWidth.load(), sh = stats.surfaceHeight.load();
-    if (sw <= 0 || sh <= 0) return;
-
-    // Letterbox to the core-reported aspect ratio.
-    float targetAspect = aspect_;
-    int vw = sw, vh = (int)(sw / targetAspect + 0.5f);
-    if (vh > sh) { vh = sh; vw = (int)(sh * targetAspect + 0.5f); }
-    glViewport((sw - vw) / 2, (sh - vh) / 2, vw, vh);
-
-    glDisable(GL_DEPTH_TEST);
-    glDisable(GL_BLEND);
-    glClearColor(0.f, 0.f, 0.f, 1.f);
-    glClear(GL_COLOR_BUFFER_BIT);
-
-    glUseProgram(program_);
-    glActiveTexture(GL_TEXTURE0);
-
+void VideoGL::bindGameSource(float& u, float& vSpan, float& swapRB,
+                             bool& bottomLeftOrigin, GLuint& tex) {
     // The core renders its frame into a sub-rectangle [0,u]×[0,vSpan] of a possibly-oversized
     // texture (the hw FBO is sized to a max; PPSSPP reports its true size via geometry, and
-    // passes 0×0 in the frame callback so frameW_/frameH_ come from that geometry). We bake
-    // the vertical orientation straight into the quad's V coords — NOT via the uFlipY uniform,
-    // which would flip across the FULL texture and land on the empty top of an oversized FBO.
-    float u, vSpan, swapRB;
-    bool bottomLeftOrigin;
+    // passes 0×0 in the frame callback so frameW_/frameH_ come from that geometry).
     if (frameIsHw_) {
-        glBindTexture(GL_TEXTURE_2D, fboTexture_);
+        tex = fboTexture_;
         swapRB = 0.0f;
         u = fboW_ ? (float)frameW_ / (float)fboW_ : 1.0f;
         vSpan = fboH_ ? (float)frameH_ / (float)fboH_ : 1.0f;
         bottomLeftOrigin = hwCb_.bottom_left_origin; // GL FBO: row 0 is the image bottom
     } else {
-        glBindTexture(GL_TEXTURE_2D, swTexture_);
-        // libretro XRGB8888 memory order is B,G,R,X — swizzle in the shader.
-        swapRB = swTexIs565_ ? 0.0f : 1.0f;
-        u = 1.0f;
-        vSpan = 1.0f;
-        bottomLeftOrigin = false; // software frames are top-left origin
+        tex = swTexture_;
+        swapRB = swTexIs565_ ? 0.0f : 1.0f;          // XRGB8888 memory order is B,G,R,X
+        u = 1.0f; vSpan = 1.0f;
+        bottomLeftOrigin = false;                    // software frames are top-left origin
     }
     if (u <= 0.0f) u = 1.0f;
     if (vSpan <= 0.0f) vSpan = 1.0f;
+}
 
-    // Screen-bottom / screen-top sample rows: for bottom-left origin the image bottom is at
-    // V=0 and its top at V=vSpan; for top-left origin it is reversed.
+void VideoGL::drawGameQuad(int, int, int, int, int rotationDeg, bool forResolve) {
+    float u, vSpan, swapRB; bool bottomLeftOrigin; GLuint tex = 0;
+    bindGameSource(u, vSpan, swapRB, bottomLeftOrigin, tex);
+
+    glUseProgram(program_);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, tex);
+
+    // We bake the vertical orientation straight into the quad's V coords — NOT via uFlipY,
+    // which would flip across the FULL texture and land on the empty top of an oversized FBO.
     const float vBottom = bottomLeftOrigin ? 0.0f : vSpan;
-    const float vTop = bottomLeftOrigin ? vSpan : 0.0f;
+    const float vTop    = bottomLeftOrigin ? vSpan : 0.0f;
     const float verts[] = {
         -1.f, -1.f, 0.f, vBottom,
          1.f, -1.f, u,   vBottom,
@@ -518,9 +705,12 @@ void VideoGL::drawFrame() {
     glBindBuffer(GL_ARRAY_BUFFER, vbo_);
     glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_DYNAMIC_DRAW);
 
+    // Rotation applies only when drawing to the screen; the scene-resolve pass stays upright.
+    float rot[4]; rotationMat2(forResolve ? 0 : rotationDeg, rot);
     glUniform1i(locSampler_, 0);
-    glUniform1f(locFlipY_, 0.0f); // orientation baked into the vertex UVs above
+    glUniform1f(locFlipY_, 0.0f);
     glUniform1f(locSwapRB_, swapRB);
+    if (locPosRot_ >= 0) glUniformMatrix2fv(locPosRot_, 1, GL_FALSE, rot);
     glEnableVertexAttribArray((GLuint)locPos_);
     glEnableVertexAttribArray((GLuint)locTex_);
     glVertexAttribPointer((GLuint)locPos_, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
@@ -530,6 +720,216 @@ void VideoGL::drawFrame() {
     glDisableVertexAttribArray((GLuint)locPos_);
     glDisableVertexAttribArray((GLuint)locTex_);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+
+void VideoGL::drawPostQuad(int id, GLuint srcTex, int, int, int vpW, int vpH,
+                           int rotationDeg, const DisplayConfig& cfg) {
+    if (id <= 0 || id >= kPostShaderCount) return;
+    const PostProgram& p = post_[id];
+    if (!p.program) return;
+
+    glUseProgram(p.program);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, srcTex);
+
+    float rot[4]; rotationMat2(rotationDeg, rot);
+    if (p.locSampler >= 0) glUniform1i(p.locSampler, 0);
+    if (p.locPosRot >= 0) glUniformMatrix2fv(p.locPosRot, 1, GL_FALSE, rot);
+    if (p.locTexel >= 0) {
+        // All offscreen targets are native-res, so the scene texel size is correct every pass.
+        const float tw = sceneW_ > 0 ? 1.0f / (float)sceneW_ : 1.0f / 480.0f;
+        const float th = sceneH_ > 0 ? 1.0f / (float)sceneH_ : 1.0f / 272.0f;
+        glUniform2f(p.locTexel, tw, th);
+    }
+    if (p.locOutputSize >= 0) glUniform2f(p.locOutputSize, (float)vpW, (float)vpH);
+    if (p.locScanlineIntensity >= 0) glUniform1f(p.locScanlineIntensity, cfg.scanlineIntensity);
+    if (p.locMaskIntensity >= 0) glUniform1f(p.locMaskIntensity, cfg.maskIntensity);
+    if (p.locSharpenAmount >= 0) glUniform1f(p.locSharpenAmount, cfg.sharpenAmount);
+
+    glBindBuffer(GL_ARRAY_BUFFER, postVbo_);
+    glEnableVertexAttribArray((GLuint)p.locPos);
+    glEnableVertexAttribArray((GLuint)p.locTex);
+    glVertexAttribPointer((GLuint)p.locPos, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+    glVertexAttribPointer((GLuint)p.locTex, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float),
+                          (void*)(2 * sizeof(float)));
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    glDisableVertexAttribArray((GLuint)p.locPos);
+    glDisableVertexAttribArray((GLuint)p.locTex);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+
+bool VideoGL::ensurePostPipeline() {
+    if (postBuilt_) {
+        return post_[kPostScanlineCrt].program || post_[kPostFsrSharpen].program ||
+               post_[kPostSharpBilinear].program;
+    }
+    postBuilt_ = true;
+
+    if (!postVbo_) {
+        // Static identity quad: pos (-1..1) + upright UV; sampled scene texture is already clean.
+        const float verts[] = {
+            -1.f, -1.f, 0.f, 0.f,
+             1.f, -1.f, 1.f, 0.f,
+            -1.f,  1.f, 0.f, 1.f,
+             1.f,  1.f, 1.f, 1.f,
+        };
+        glGenBuffers(1, &postVbo_);
+        glBindBuffer(GL_ARRAY_BUFFER, postVbo_);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+    }
+
+    GLuint vs = compileShader(GL_VERTEX_SHADER, kPostVertexShader);
+    if (!vs) return false;
+    bool any = false;
+    for (int id = 1; id < kPostShaderCount; id++) {
+        const char* frag = kPostFragForId(id);
+        if (!frag) continue;
+        GLuint fs = compileShader(GL_FRAGMENT_SHADER, frag);
+        if (!fs) continue;
+        GLuint prog = glCreateProgram();
+        glAttachShader(prog, vs);
+        glAttachShader(prog, fs);
+        glLinkProgram(prog);
+        glDeleteShader(fs);
+        GLint ok = 0;
+        glGetProgramiv(prog, GL_LINK_STATUS, &ok);
+        if (!ok) {
+            char log[512]; glGetProgramInfoLog(prog, sizeof(log), nullptr, log);
+            LOGE("post shader %d link failed: %s", id, log);
+            glDeleteProgram(prog);
+            continue;
+        }
+        PostProgram& p = post_[id];
+        p.program = prog;
+        p.locPos = glGetAttribLocation(prog, "aPos");
+        p.locTex = glGetAttribLocation(prog, "aTex");
+        p.locPosRot = glGetUniformLocation(prog, "uPosRot");
+        p.locSampler = glGetUniformLocation(prog, "uSampler");
+        p.locTexel = glGetUniformLocation(prog, "uTexel");
+        p.locOutputSize = glGetUniformLocation(prog, "uOutputSize");
+        p.locScanlineIntensity = glGetUniformLocation(prog, "uScanlineIntensity");
+        p.locMaskIntensity = glGetUniformLocation(prog, "uMaskIntensity");
+        p.locSharpenAmount = glGetUniformLocation(prog, "uSharpenAmount");
+        any = true;
+    }
+    glDeleteShader(vs); // safe: kept alive while attached, freed with each program
+    return any;
+}
+
+bool VideoGL::ensureSceneTarget(GLuint& fbo, GLuint& tex, int& w, int& h, int wantW, int wantH) {
+    if (wantW <= 0 || wantH <= 0) return false;
+    if (fbo && tex && w == wantW && h == wantH) return true;
+    if (tex) { glDeleteTextures(1, &tex); tex = 0; }
+    if (fbo) { glDeleteFramebuffers(1, &fbo); fbo = 0; }
+
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, wantW, wantH, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    glGenFramebuffers(1, &fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
+    GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    if (status != GL_FRAMEBUFFER_COMPLETE) {
+        LOGE("scene FBO incomplete 0x%x (%dx%d)", status, wantW, wantH);
+        glDeleteTextures(1, &tex); tex = 0;
+        glDeleteFramebuffers(1, &fbo); fbo = 0;
+        return false;
+    }
+    w = wantW; h = wantH;
+    return true;
+}
+
+void VideoGL::setDisplayConfig(const DisplayConfig& cfg) {
+    std::lock_guard<std::mutex> lock(displayCfgMutex_);
+    displayCfg_ = cfg;
+}
+
+int VideoGL::shaderSelfTest() {
+    int mask = 0;
+    if (ensureQuadPipeline() && program_) mask |= (1 << 0);
+    ensurePostPipeline();
+    for (int id = 1; id < kPostShaderCount; id++) {
+        if (post_[id].program) mask |= (1 << id);
+    }
+    return mask;
+}
+
+void VideoGL::drawFrame() {
+    if (!ensureQuadPipeline() || !haveFrame_) {
+        glDisable(GL_SCISSOR_TEST);
+        glClearColor(0.03f, 0.04f, 0.07f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        return;
+    }
+
+    const int sw = stats.surfaceWidth.load(), sh = stats.surfaceHeight.load();
+    if (sw <= 0 || sh <= 0) return;
+
+    DisplayConfig cfg;
+    { std::lock_guard<std::mutex> lock(displayCfgMutex_); cfg = displayCfg_; }
+
+    const int srcW = (int)frameW_, srcH = (int)frameH_;
+    int vpX, vpY, vpW, vpH;
+    computeViewport(aspect_, srcW, srcH, cfg.scaleMode, cfg.rotationDeg, sw, sh, vpX, vpY, vpW, vpH);
+
+    resetPresentGlState();
+
+    const bool wantPost = (cfg.pass1 != kPostNone || cfg.pass2 != kPostNone) &&
+                          srcW > 0 && srcH > 0 && ensurePostPipeline();
+
+    // Fast path (no post shaders): draw the game frame straight to the drawable, rotated+scaled.
+    if (!wantPost) {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(vpX, vpY, vpW, vpH);
+        glClear(GL_COLOR_BUFFER_BIT);
+        drawGameQuad(vpX, vpY, vpW, vpH, cfg.rotationDeg, /*forResolve=*/false);
+        return;
+    }
+
+    // Post path: resolve the game frame into a clean native scene texture (single V-flip, clamped
+    // edges), then run 1..2 stacked passes; only the final pass rotates + scales to the screen.
+    if (!ensureSceneTarget(sceneFbo_, sceneTex_, sceneW_, sceneH_, srcW, srcH)) {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(vpX, vpY, vpW, vpH);
+        glClear(GL_COLOR_BUFFER_BIT);
+        drawGameQuad(vpX, vpY, vpW, vpH, cfg.rotationDeg, false);
+        return;
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, sceneFbo_);
+    glViewport(0, 0, srcW, srcH);
+    glClear(GL_COLOR_BUFFER_BIT);
+    drawGameQuad(0, 0, srcW, srcH, /*rotationDeg=*/0, /*forResolve=*/true);
+
+    int passes[2]; int n = 0;
+    if (cfg.pass1 != kPostNone) passes[n++] = cfg.pass1;
+    if (cfg.pass2 != kPostNone) passes[n++] = cfg.pass2;
+
+    GLuint curTex = sceneTex_;
+    for (int i = 0; i < n; i++) {
+        const bool last = (i == n - 1);
+        if (!last && ensureSceneTarget(pingFbo_, pingTex_, pingW_, pingH_, srcW, srcH)) {
+            // Intermediate pass: axis-aligned, native-res, no rotation, into the ping target.
+            glBindFramebuffer(GL_FRAMEBUFFER, pingFbo_);
+            glViewport(0, 0, srcW, srcH);
+            glClear(GL_COLOR_BUFFER_BIT);
+            drawPostQuad(passes[i], curTex, 0, 0, srcW, srcH, /*rotationDeg=*/0, cfg);
+            curTex = pingTex_;
+        } else {
+            // Final pass (or ping alloc failed): rotate + scale to the drawable.
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glViewport(vpX, vpY, vpW, vpH);
+            glClear(GL_COLOR_BUFFER_BIT);
+            drawPostQuad(passes[i], curTex, vpX, vpY, vpW, vpH, cfg.rotationDeg, cfg);
+            return;
+        }
+    }
 }
 
 // Swappy hooks are provided by the host (libretro_host.cpp) via these weak-ish externs.

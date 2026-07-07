@@ -145,4 +145,28 @@ object LibretroBridge {
 
     /** True while a variable change is still waiting for the core to re-query. */
     external fun nativeVariablesDirty(): Boolean
+
+    // ---- display polish (P19): rotation / scale mode / stacked post-shaders ----
+
+    /**
+     * Configure the host present pass. Applied on the render thread at the next present (safe to
+     * call from any thread). [scaleMode] 0=fit 1=stretch 2=integer; [rotationDeg] 0/90/180/270;
+     * [pass1]/[pass2] are [PostShader] ids stacked in order (0 = none). Intensities are 0..1.
+     */
+    external fun nativeSetDisplayConfig(
+        rotationDeg: Int,
+        scaleMode: Int,
+        pass1: Int,
+        pass2: Int,
+        scanlineIntensity: Float,
+        maskIntensity: Float,
+        sharpenAmount: Float,
+    )
+
+    /**
+     * Compile + link every built-in present program against the live GL context (render thread)
+     * and return a success bitmask: bit 0 = base present program, bits 1..3 = the post shaders
+     * ([PostShader] ids). All-good == 0b1111 (15). Returns 0 with no running session.
+     */
+    external fun nativeShaderSelfTest(): Int
 }

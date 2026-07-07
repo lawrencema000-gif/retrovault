@@ -134,6 +134,9 @@ object LibretroBridge {
     /** Whether the loaded core exposes the libretro cheat interface. */
     external fun nativeCoreSupportsCheats(): Boolean
 
+    /** Number of currently-enabled cheats — 0 in hardcore (cheats are cleared when it turns on). */
+    external fun nativeActiveCheatCount(): Int
+
     // ---- core variables (P11 settings framework) ----
 
     /**

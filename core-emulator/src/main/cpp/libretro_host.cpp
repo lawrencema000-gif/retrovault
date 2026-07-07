@@ -31,6 +31,8 @@
 #include "libretro.h"
 #include "video_gl.h"
 #include "audio_out.h"
+#include "rc_bridge.h"
+#include "rc_host.h"
 
 #include "swappy/swappyGL.h"
 
@@ -60,11 +62,14 @@ struct Core {
     bool (*retro_load_game)(const retro_game_info*) = nullptr;
     void (*retro_unload_game)() = nullptr;
     void (*retro_run)() = nullptr;
+    void (*retro_reset)() = nullptr;
     size_t (*retro_serialize_size)() = nullptr;
     bool (*retro_serialize)(void*, size_t) = nullptr;
     bool (*retro_unserialize)(const void*, size_t) = nullptr;
     void (*retro_cheat_reset)() = nullptr;
     void (*retro_cheat_set)(unsigned, bool, const char*) = nullptr;
+    void* (*retro_get_memory_data)(unsigned) = nullptr;   // RETRO_MEMORY_SYSTEM_RAM for RetroAchievements
+    size_t (*retro_get_memory_size)(unsigned) = nullptr;
 };
 
 template <typename T>
@@ -93,8 +98,17 @@ std::atomic<bool> g_swappyEnabled{false};
 std::atomic<int> g_speedPct{100};
 // While true, audio_batch_cb drops samples (non-final runs of a fast-forward batch).
 bool g_ffMuteAudio = false; // run-loop thread only
-// RetroAchievements-ready interlock: while set, FF/slow-mo/rewind are refused.
+// RetroAchievements interlock: while set, state-load/rewind/slow-mo/cheats are refused (P20).
+// Fast-forward IS allowed in hardcore (RA rule); see the speed clamp in the run loop.
 std::atomic<bool> g_hardcoreActive{false};
+
+// Core memory map (RETRO_ENVIRONMENT_SET_MEMORY_MAPS), deep-copied so it outlives the env call.
+// Fed to rc_libretro so RetroAchievements can read PSP RAM even if the core exposes it via
+// descriptors rather than the flat RETRO_MEMORY_SYSTEM_RAM path. Set once during game load.
+std::mutex g_memMapMutex;
+std::vector<retro_memory_descriptor> g_memDescs;
+retro_memory_map g_memMap{};
+bool g_haveMemMap = false;
 
 // input snapshot (written by UI/gamepad threads via nativeSetInput)
 std::atomic<int32_t> g_buttons{0};
@@ -236,6 +250,19 @@ bool env_cb(unsigned cmd, void* data) {
             g_supportsNoGame = *(const bool*)data;
             return true;
 
+        case RETRO_ENVIRONMENT_SET_MEMORY_MAPS: {
+            // Deep-copy the descriptor array; the core's pointer isn't guaranteed to persist. The
+            // per-descriptor `ptr` points at core-owned RAM which stays valid for the session.
+            const auto* mm = (const retro_memory_map*)data;
+            std::lock_guard<std::mutex> lk(g_memMapMutex);
+            g_memDescs.assign(mm->descriptors, mm->descriptors + mm->num_descriptors);
+            g_memMap.descriptors = g_memDescs.data();
+            g_memMap.num_descriptors = (unsigned)g_memDescs.size();
+            g_haveMemMap = !g_memDescs.empty();
+            LOGI("SET_MEMORY_MAPS: %u descriptors (RetroAchievements memory)", mm->num_descriptors);
+            return true;
+        }
+
         case RETRO_ENVIRONMENT_GET_VARIABLE: {
             auto* var = (retro_variable*)data;
             if (!var || !var->key) return false;
@@ -367,11 +394,14 @@ bool loadCoreOnThread() {
     g_core.retro_load_game = sym<bool (*)(const retro_game_info*)>(h, "retro_load_game");
     g_core.retro_unload_game = sym<void (*)()>(h, "retro_unload_game");
     g_core.retro_run = sym<void (*)()>(h, "retro_run");
+    g_core.retro_reset = sym<void (*)()>(h, "retro_reset");
     g_core.retro_serialize_size = sym<size_t (*)()>(h, "retro_serialize_size");
     g_core.retro_serialize = sym<bool (*)(void*, size_t)>(h, "retro_serialize");
     g_core.retro_unserialize = sym<bool (*)(const void*, size_t)>(h, "retro_unserialize");
     g_core.retro_cheat_reset = sym<void (*)()>(h, "retro_cheat_reset");
     g_core.retro_cheat_set = sym<void (*)(unsigned, bool, const char*)>(h, "retro_cheat_set");
+    g_core.retro_get_memory_data = sym<void* (*)(unsigned)>(h, "retro_get_memory_data");
+    g_core.retro_get_memory_size = sym<size_t (*)(unsigned)>(h, "retro_get_memory_size");
 
     if (!g_core.retro_init || !g_core.retro_run || !g_core.retro_load_game ||
         !g_core.retro_set_environment) {
@@ -424,8 +454,10 @@ bool doSaveStateOnThread(const std::string& statePath, const std::string& frameP
     if (n == 0) { LOGE("state: serialize_size = 0"); return false; }
     std::vector<uint8_t> buf(n);
     if (!g_core.retro_serialize(buf.data(), n)) { LOGE("state: retro_serialize failed"); return false; }
-    if (!writeFileAtomic(statePath, buf.data(), n)) return false;
-    LOGI("state saved: %s (%zu bytes)", statePath.c_str(), n);
+    // Append RetroAchievements runtime progress (no-op / legacy format when RA is inactive).
+    rc_bridge_pack_state(buf);
+    if (!writeFileAtomic(statePath, buf.data(), buf.size())) return false;
+    LOGI("state saved: %s (%zu bytes)", statePath.c_str(), buf.size());
 
     if (!framePath.empty()) {
         // Raw RGBA dump (int32 w, int32 h, then top-down rows); Kotlin turns it into a PNG.
@@ -454,9 +486,13 @@ bool doLoadStateOnThread(const std::string& statePath) {
     bool ok = fread(buf.data(), 1, (size_t)len, f) == (size_t)len;
     fclose(f);
     if (!ok) return false;
-    ok = g_core.retro_unserialize(buf.data(), buf.size());
+    // A state may carry an RA-progress trailer; hand only the core bytes to retro_unserialize,
+    // then restore the achievement runtime (or reset it for legacy/RA-off states).
+    size_t coreLen = rc_bridge_state_core_len(buf.data(), buf.size());
+    ok = g_core.retro_unserialize(buf.data(), coreLen);
     LOGI("state load %s: %s", statePath.c_str(), ok ? "ok" : "FAILED");
     if (ok) {
+        rc_bridge_state_restore_progress(buf.data(), buf.size());
         g_lastRestoreFrame = g_video.stats.framesPresented.load();
         g_lastRestoreTimeNs = monotonicNowNs();
     }
@@ -617,6 +653,33 @@ void failPendingStateOp() {
 bool pulsar_swappy_swap(EGLDisplay display, EGLSurface surface) {
     if (!g_swappyEnabled.load()) return false;
     return SwappyGL_swap(display, surface);
+}
+
+// ---- RetroAchievements host hooks (rc_host.h) — invoked by rc_bridge on the run-loop thread ----
+
+void rc_host_get_core_memory(unsigned id, unsigned char** data, size_t* size) {
+    *data = g_core.retro_get_memory_data ? (unsigned char*)g_core.retro_get_memory_data(id) : nullptr;
+    *size = g_core.retro_get_memory_size ? g_core.retro_get_memory_size(id) : 0;
+}
+
+const struct retro_memory_map* rc_host_memory_map() {
+    std::lock_guard<std::mutex> lk(g_memMapMutex);
+    return g_haveMemMap ? &g_memMap : nullptr; // stable after game load; safe to use past the lock
+}
+
+void rc_host_reset_core() {
+    if (g_core.retro_reset) g_core.retro_reset();
+}
+
+void rc_host_apply_hardcore(bool on) {
+    g_hardcoreActive.store(on);
+    if (on) {
+        // Cheats are mutually exclusive with hardcore — clear the active set (applyCheatsIfDirty
+        // will retro_cheat_reset), and drop any slow-mo up to realtime (FF stays allowed).
+        { std::lock_guard<std::mutex> lk(g_cheatMutex); g_cheats.clear(); }
+        g_cheatsDirty = true;
+        if (g_speedPct.load() < 100) g_speedPct = 100;
+    }
 }
 
 // ---------------------------------------------------------------------------- JNI
@@ -791,6 +854,8 @@ Java_com_retrovault_emulator_LibretroBridge_nativeRunLoop(JNIEnv*, jobject) {
                 resumeFrameMark = g_video.stats.framesPresented.load();
             }
             processStateOp(); // save/load still serviced while frozen (auto-save, menu saves)
+            rc_bridge_service(); // RA login/load HTTP round-trips complete even while paused
+            rc_bridge_idle();
             std::this_thread::sleep_for(std::chrono::milliseconds(15));
             nextFrame = std::chrono::steady_clock::now();
             continue;
@@ -802,10 +867,13 @@ Java_com_retrovault_emulator_LibretroBridge_nativeRunLoop(JNIEnv*, jobject) {
         g_video.callContextResetOnce();
         applyRewindConfig();
         applyCheatsIfDirty();
+        rc_bridge_service(); // RetroAchievements: drain command + HTTP-completion queues
 
         // Speed: ≥200% batches N runs per presented frame (only the last is audible/shown);
-        // 50% slow-mo runs the core on alternate iterations.
-        const int speed = g_hardcoreActive.load() ? 100 : g_speedPct.load();
+        // 50% slow-mo runs the core on alternate iterations. In hardcore, fast-forward is allowed
+        // (RA rule) but slow-mo is refused — clamp only the low end up to realtime.
+        int speed = g_speedPct.load();
+        if (g_hardcoreActive.load() && speed < 100) speed = 100;
         int runs = speed >= 200 ? speed / 100 : 1;
         static bool slowmoSkip = false;
         if (speed == 50) {
@@ -816,7 +884,9 @@ Java_com_retrovault_emulator_LibretroBridge_nativeRunLoop(JNIEnv*, jobject) {
             g_ffMuteAudio = (i < runs - 1);
             g_audio.updateRateControl();
             g_core.retro_run();
+            rc_bridge_on_emulated_frame(); // rc_client_do_frame after each emulated frame
         }
+        if (runs == 0) rc_bridge_idle(); // slow-mo skip iteration: still service RA async work
         g_ffMuteAudio = false;
         g_video.present();
         if (speed == 100) maybeTakeRewindSnapshot();
@@ -852,11 +922,20 @@ Java_com_retrovault_emulator_LibretroBridge_nativeRunLoop(JNIEnv*, jobject) {
     g_rewindCount = 0;
     // Teardown order matters: audio stops first (its producer is the core thread), then
     // context_destroy fires while the core is still loaded and the GL context is current;
-    // only then unload/dlclose the core; EGL goes down last.
+    // only then unload/dlclose the core; EGL goes down last. The RA bridge tears down BEFORE the
+    // core is unloaded — its read-memory callback dereferences core-owned RAM that dlclose frees.
     g_audio.stop();
+    rc_bridge_end_session();
     g_video.notifyContextDestroy();
     unloadCoreOnThread();
     g_video.shutdown();
+    {
+        // Drop the core's memory map so the next session doesn't reuse stale descriptors.
+        std::lock_guard<std::mutex> lk(g_memMapMutex);
+        g_memDescs.clear();
+        g_memMap = retro_memory_map{};
+        g_haveMemMap = false;
+    }
     g_running = false;
     g_stopRequested = false;
     return JNI_TRUE;
@@ -974,6 +1053,9 @@ static jboolean postOp(JNIEnv* env, OpType type, jstring statePath, jstring fram
         env->ReleaseStringUTFChars(s, c);
         return out;
     };
+    // RetroAchievements hardcore: loading a save state is banned (creating one is allowed). This
+    // is the single retro_unserialize choke point for user/auto/undo/resume loads.
+    if (type == OpType::LOAD && g_hardcoreActive.load()) return JNI_FALSE;
     std::string statePathStr = grab(statePath);
     std::string framePathStr = grab(framePath);
     if (type == OpType::SAVE || type == OpType::LOAD) {
@@ -1014,10 +1096,12 @@ Java_com_retrovault_emulator_LibretroBridge_nativeScreenshot(JNIEnv* env, jobjec
 
 JNIEXPORT void JNICALL
 Java_com_retrovault_emulator_LibretroBridge_nativeSetSpeed(JNIEnv*, jobject, jint pct) {
-    if (g_hardcoreActive.load()) { g_speedPct = 100; return; }
     int v = pct;
+    // Normalize to the supported set: 50 (slow-mo), 100, or 200–500 (fast-forward).
     if (v != 50 && v < 100) v = 100;
     if (v > 500) v = 500;
+    // Hardcore allows fast-forward but refuses slow-mo — clamp only the low end up to realtime.
+    if (g_hardcoreActive.load() && v < 100) v = 100;
     g_speedPct = v;
 }
 
@@ -1046,8 +1130,9 @@ Java_com_retrovault_emulator_LibretroBridge_nativeRewindStep(JNIEnv* env, jobjec
 
 JNIEXPORT void JNICALL
 Java_com_retrovault_emulator_LibretroBridge_nativeSetHardcore(JNIEnv*, jobject, jboolean on) {
-    g_hardcoreActive = on == JNI_TRUE;
-    if (on == JNI_TRUE) g_speedPct = 100;
+    // Direct toggle (RA drives this via RaBridge in production). Enabling clears cheats + drops
+    // slow-mo; state-load/rewind are refused elsewhere while g_hardcoreActive. FF stays allowed.
+    rc_host_apply_hardcore(on == JNI_TRUE);
 }
 
 // ---- core variables (P11 settings framework) ----
@@ -1123,6 +1208,13 @@ Java_com_retrovault_emulator_LibretroBridge_nativeApplyCheats(JNIEnv* env, jobje
 JNIEXPORT jboolean JNICALL
 Java_com_retrovault_emulator_LibretroBridge_nativeCoreSupportsCheats(JNIEnv*, jobject) {
     return (g_core.retro_cheat_set && g_core.retro_cheat_reset) ? JNI_TRUE : JNI_FALSE;
+}
+
+// Count of currently-enabled cheats (0 in hardcore — cheats are cleared when hardcore turns on).
+JNIEXPORT jint JNICALL
+Java_com_retrovault_emulator_LibretroBridge_nativeActiveCheatCount(JNIEnv*, jobject) {
+    std::lock_guard<std::mutex> lk(g_cheatMutex);
+    return (jint)g_cheats.size();
 }
 
 // ---- display polish (P19): rotation / scale mode / stacked post-shaders ----

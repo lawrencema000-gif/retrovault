@@ -3,7 +3,36 @@
 > **✅ All 10 stages' foundations laid and building green.**
 > **📋 Execution now follows [`MASTERPLAN.md`](MASTERPLAN.md) — 27 steps (P1–P27), one per session.**
 > **📍 CURRENT STEP → P5: First light on the user's physical device [DEVICE SESSION — everything is staged]**
-> **   (code steps P6–P17 + P19 done on the emulator; P18 + P20–P27 remain.)**
+> **   (code steps P6–P17 + P19 + P20 done on the emulator; P18 + P21–P27 remain.)**
+>
+> ✅ **P20 done (2026-07-07):** RetroAchievements (hardcore-compliant). **rcheevos v11.6.0 (MIT)
+> vendored** (`core-emulator/src/main/cpp/rcheevos/`, 30 `.c`, provenance recorded) + compiled into
+> `libpulsar_retro.so` as a STATIC lib (both ABIs) — `RC_DISABLE_LUA` + **`RC_CLIENT_SUPPORTS_HASH`**
+> (gates the identify/load decls) + `_LARGEFILE64_SOURCE`. Native **`rc_bridge.cpp`** wraps `rc_client`
+> single-owner on the run-loop thread: read-memory via `rc_libretro` + `retro_get_memory_data` (and the
+> captured `SET_MEMORY_MAPS` descriptors); **HTTP routed to Kotlin OkHttp** (`RaHttpPump`) — rc_client
+> emits `url`+`post_data`, a native queue hands it to OkHttp, the completion is **marshalled back and the
+> callback invoked on the run-loop thread** (never the OkHttp thread); event handler → JSON event queue +
+> per-game list/summary snapshots; `rc_client_do_frame` per emulated frame; login/token + Keystore token
+> store (`RaCredentialStore`, EncryptedSharedPreferences); **stable User-Agent** `Pulsar/<v> (Android …)
+> rcheevos/11.6`. **Hardcore interlock refined to RA's real rules** (drove a P10Test update): state-LOAD
+> **blocked** (single `retro_unserialize` choke point), rewind blocked, **slow-mo blocked but
+> fast-forward ALLOWED** (was wrongly pinned to 100), cheats cleared on hardcore-enable, **creating**
+> states allowed; one-way hardcore→casual; `RC_CLIENT_EVENT_RESET`→`retro_reset`. **Achievement progress
+> rides inside save states** via a backward-compatible 28-byte `PULSARRA` footer (legacy states still
+> load). Teardown fixed per the adversarial verifier: abort async → fail owed HTTP callbacks (no bridge
+> mutex held) → unload → destroy → free regions, all BEFORE `dlclose`. **A research→design→adversarial-
+> verify Workflow (6 agents) caught 10 real issues** before a line was written — 2 build blockers
+> (`RC_CLIENT_SUPPORTS_HASH`; `rc_version_string()`=="11.6" not "11.6.0"), a teardown UAF, and an
+> on-device-dead-hardcore risk (must plumb the memory map, not just SYSTEM_RAM). RaTest (testgl-free,
+> BG3): rcheevos links + version, rc_client create/destroy, **HTTP marshals to the run-loop thread**,
+> progress-container round-trip; on the live PSP session — **PPSSPP exposes 32 MB SYSTEM_RAM** and reads
+> land in mapped RAM; **hardcore blocks state-load + slow-mo + cheats, allows FF + create-save; softcore
+> re-allows load**; RA session begins + tears down clean (0 in-flight) — **OK (2)**; full suite **OK (54
+> tests)**. **⚠️ STAGED (needs an RA account + RA-side approval of Pulsar as a compliant emulator, a
+> ~6-month public clock):** real login, real unlock in softcore + hardcore, achievement-list populate,
+> privacy-policy/monetization-disclosure publish. Deferred to P5 device: on-hardware 90-vs-270 (P19) +
+> real unlock once approved.
 >
 > ✅ **P19 done (2026-07-07):** Display polish — stackable post-shaders, rotation, scale modes,
 > gallery screenshots. **Native present pipeline rebuilt** (`video_gl`): the game frame resolves

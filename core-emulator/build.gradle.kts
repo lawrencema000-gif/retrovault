@@ -47,4 +47,7 @@ dependencies {
     implementation(project(":core-model"))
     implementation(libs.games.frame.pacing)
     implementation(libs.oboe)
+    // RetroAchievements (P20): OkHttp transport for rc_client + Keystore-backed token storage.
+    implementation(libs.okhttp)
+    implementation(libs.androidx.security.crypto)
 }

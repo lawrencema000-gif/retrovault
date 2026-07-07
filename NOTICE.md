@@ -52,7 +52,8 @@ because another store hosts it). Titles with mixed/unclear asset licensing are N
 
 - PPSSPP `assets/shaders/*` + `defaultshaders.ini` (GPL-2.0-or-later) — post-processing chain (P19)
 - `gamecontrollerdb.txt` (SDL community DB, zlib-style) — gamepad auto-mapping (P9)
-- rcheevos (MIT) — RetroAchievements client (P20)
+- rcheevos v11.6.0 (MIT, © RetroAchievements.org) — rc_client runtime, rhash, rc_libretro;
+  vendored at `core-emulator/src/main/cpp/rcheevos/`, compiled into `libpulsar_retro.so` (P20)
 - AGDK games-frame-pacing "Swappy" (Apache-2.0) — frame pacing (P2)
 - google/oboe (Apache-2.0) — low-latency audio (P3)
 - libchdr (BSD-3-Clause) — CHD disc-image support (P6)

@@ -94,11 +94,14 @@ class P10Test {
             // Back to 1×.
             LibretroBridge.nativeSetSpeed(100)
 
-            // Hardcore: FF refused.
+            // Hardcore (P20 refinement): fast-forward is allowed (RA rule) but slow-mo is refused.
             LibretroBridge.nativeSetHardcore(true)
             LibretroBridge.nativeSetSpeed(300)
-            assertEquals("hardcore must pin speed at 100", 100, LibretroBridge.nativeGetSpeed())
+            assertEquals("hardcore must allow fast-forward", 300, LibretroBridge.nativeGetSpeed())
+            LibretroBridge.nativeSetSpeed(50)
+            assertEquals("hardcore must refuse slow-mo", 100, LibretroBridge.nativeGetSpeed())
             assertTrue(LibretroBridge.nativeIsHardcore())
+            LibretroBridge.nativeSetSpeed(100)
             LibretroBridge.nativeSetHardcore(false)
 
             LibretroBridge.nativeRequestStop()

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- full flavor only. Sentry's SDK auto-initializes from a manifest ContentProvider at process
+     start and CRASHES without a DSN — disable auto-init so the only init path is the explicit,
+     opt-in + DSN-gated call in CrashReporting.kt. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <meta-data
+            android:name="io.sentry.auto-init"
+            android:value="false" />
+    </application>
+</manifest>

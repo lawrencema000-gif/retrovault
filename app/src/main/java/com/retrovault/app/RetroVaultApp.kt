@@ -10,5 +10,7 @@ class RetroVaultApp : Application() {
         // Load UI prefs early so theme (OLED) + onboarding gating are correct on first frame,
         // in both the main and :emu processes.
         AppPrefs.init(this)
+        // Crash reporting: flavor-resolved (full = Sentry, opt-in + DSN-gated; foss = no-op).
+        initCrashReportingIfEnabled(this)
     }
 }

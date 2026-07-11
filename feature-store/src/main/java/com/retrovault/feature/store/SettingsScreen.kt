@@ -18,8 +18,19 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.SystemUpdateAlt
+import androidx.compose.material.icons.filled.Verified
+import com.retrovault.feature.store.about.UpdateResult
+import com.retrovault.feature.store.about.checkForUpdate
+import com.retrovault.feature.store.about.crashReportToggleAvailable
+import com.retrovault.feature.store.about.updateCheckAvailable
 import androidx.compose.material.icons.filled.BlurOn
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.BookmarkAdded
@@ -132,6 +143,11 @@ fun SettingsScreen(gameKey: String? = null, gameTitle: String? = null) {
     var goldTick by remember { mutableIntStateOf(0) }
     val isGold = remember(goldTick) { billing.isGold }
 
+    // P22 About state: licenses sheet + (foss-only) manual update check.
+    var showLicenses by remember { mutableStateOf(false) }
+    var updateStatus by remember { mutableStateOf<String?>(null) }
+    var updateAvailable by remember { mutableStateOf(false) }
+
     Column(
         Modifier
             .fillMaxSize()
@@ -205,13 +221,86 @@ fun SettingsScreen(gameKey: String? = null, gameTitle: String? = null) {
             }
 
             Section("SYSTEM INFO") {
-                StatusRow(Icons.Filled.Info, PulsarTextBody, "Version", "PULSAR 0.1.0", PulsarTextDim, showCheck = false)
+                val versionName = remember {
+                    runCatching {
+                        context.packageManager.getPackageInfo(context.packageName, 0).versionName
+                    }.getOrNull() ?: "?"
+                }
+                StatusRow(Icons.Filled.Info, PulsarTextBody, "Version", "PULSAR $versionName", PulsarTextDim, showCheck = false)
                 Divider()
                 StatusRow(
                     Icons.Filled.Memory, PulsarTextBody, "Device class",
                     DeviceClass.family().name, PulsarTextDim, showCheck = false
                 )
             }
+
+            // P22 GPL compliance surface: the license texts ship INSIDE the APK (assets/legal/)
+            // and are viewable here; the source link is the GPLv3 §6d corresponding-source offer.
+            Section("ABOUT") {
+                StatusRow(
+                    Icons.Filled.Verified, PulsarTeal, "Free software",
+                    "GNU GPLv3", PulsarTextDim, showCheck = false
+                )
+                Divider()
+                ActionRow(Icons.Filled.Code, PulsarTextBody, "Source code") {
+                    runCatching {
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/lawrencema000-gif/retrovault"))
+                        )
+                    }
+                }
+                Divider()
+                ActionRow(Icons.AutoMirrored.Filled.Article, PulsarTextBody, "Open-source licenses") {
+                    showLicenses = true
+                }
+                if (crashReportToggleAvailable()) {
+                    Divider()
+                    ToggleRow(
+                        Icons.Filled.BugReport, PulsarTextBody, "Share crash reports",
+                        com.retrovault.core.ui.AppPrefs.crashReportsOptIn
+                    ) {
+                        com.retrovault.core.ui.AppPrefs.setCrashReportsOptIn(
+                            !com.retrovault.core.ui.AppPrefs.crashReportsOptIn
+                        )
+                    }
+                }
+                if (updateCheckAvailable()) {
+                    Divider()
+                    ActionRow(
+                        Icons.Filled.SystemUpdateAlt, PulsarTextBody,
+                        updateStatus ?: "Check for updates",
+                    ) {
+                        if (updateAvailable) {
+                            runCatching {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse(UpdateCheck.RELEASES_PAGE))
+                                )
+                            }
+                        } else {
+                            updateStatus = "Checking…"
+                            val versionName = runCatching {
+                                context.packageManager.getPackageInfo(context.packageName, 0).versionName
+                            }.getOrNull() ?: "0"
+                            checkForUpdate(versionName) { result ->
+                                when (result) {
+                                    is UpdateResult.UpdateAvailable -> {
+                                        updateAvailable = true
+                                        updateStatus = "${result.tag} available — tap to open"
+                                    }
+                                    UpdateResult.UpToDate, UpdateResult.NoReleases ->
+                                        updateStatus = "Up to date"
+                                    UpdateResult.Error ->
+                                        updateStatus = "Check failed — try again"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (showLicenses) {
+            LicensesSheet(onDismiss = { showLicenses = false })
         }
 
         Spacer(Modifier.height(18.dp))
@@ -406,6 +495,91 @@ private fun NavRow(icon: ImageVector, tint: Color, label: String) {
     ) {
         RowIcon(icon, tint, label)
         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = PulsarTextDim, modifier = Modifier.size(20.dp))
+    }
+}
+
+/** NavRow with a real click action (P22 About rows). */
+@Composable
+private fun ActionRow(icon: ImageVector, tint: Color, label: String, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(horizontal = 16.dp, vertical = 15.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        RowIcon(icon, tint, label)
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = PulsarTextDim, modifier = Modifier.size(20.dp))
+    }
+}
+
+/**
+ * Open-source licenses viewer (P22). Renders the legal texts that ship INSIDE the APK —
+ * NOTICE.md + GPLv3 are copied from the repo root at build time (drift-proof), the third-party
+ * license texts are static assets. This is what makes the APK itself GPL-compliant (§4/§6:
+ * recipients get a copy of the license with the program; a URL is not a copy).
+ */
+@Composable
+private fun LicensesSheet(onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val files = listOf(
+        "Pulsar — notices & provenance" to "legal/NOTICE.md",
+        "GNU General Public License v3 (Pulsar, and GPL-2.0-or-later components via the \"or later\" election)" to "legal/gpl-3.0.txt",
+        "GNU General Public License v2 (PPSSPP core, compat.ini, ppge_atlas.zim — licensed GPL-2.0-or-later)" to "legal/gpl-2.0.txt",
+        "Apache License 2.0 (AndroidX, Compose, Kotlin, OkHttp, Coil, Oboe, Swappy)" to "legal/apache-2.0.txt",
+        "MIT License (rcheevos, libretro.h, AMD FidelityFX FSR RCAS port)" to "legal/mit.txt",
+        "SIL Open Font License 1.1 (Chakra Petch, Manrope)" to "legal/ofl-1.1.txt",
+        "BSD 3-Clause (libchdr, in the CI-built PPSSPP core)" to "legal/bsd-3-clause.txt",
+        "zlib License (SDL gamecontrollerdb.txt)" to "legal/zlib.txt",
+    )
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .background(PulsarSurface1)
+                .padding(16.dp)
+        ) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Open-source licenses",
+                    fontFamily = ChakraPetch, fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp, color = PulsarText
+                )
+                Text(
+                    "Close", fontSize = 14.sp, color = PulsarPrimary,
+                    modifier = Modifier
+                        .clickable { onDismiss() }
+                        .padding(8.dp)
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxSize()) {
+                files.forEach { (title, path) ->
+                    item(key = path) {
+                        val text = remember(path) {
+                            runCatching {
+                                context.assets.open(path).bufferedReader().readText()
+                            }.getOrElse { "(missing: $path)" }
+                        }
+                        Text(
+                            title,
+                            fontFamily = ChakraPetch, fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp, color = PulsarTeal,
+                            modifier = Modifier.padding(top = 18.dp, bottom = 6.dp)
+                        )
+                        Text(text, fontSize = 11.sp, lineHeight = 15.sp, color = PulsarTextBody)
+                    }
+                }
+            }
+        }
     }
 }
 

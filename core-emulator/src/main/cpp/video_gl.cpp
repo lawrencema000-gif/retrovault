@@ -56,7 +56,7 @@ void main() {
 }
 )";
 
-// --- P19 post-shader fragment sources (authored + adversarially verified, GLSL ES 1.00) -------
+// --- P19 post-shader fragment sources (authored or ported — lineage per NOTICE.md, GLSL ES 1.00) --
 
 // CRT scanlines + subtle aperture mask. highp-guarded, fract-wrapped phase (mediump-safe).
 const char* kFragScanlineCrt = R"(#version 100
@@ -98,6 +98,8 @@ void main() {
 
 // FSR 1.0 RCAS contrast-adaptive sharpen (5-tap). Overshoot clamp uses the FULL 5-tap envelope
 // (center included) so isolated highlights survive.
+// Port of AMD FidelityFX FSR 1.0 RCAS (ffx_fsr1.h). MIT License,
+// Copyright (c) 2021 Advanced Micro Devices, Inc. See NOTICE.md.
 const char* kFragFsrSharpen = R"(#version 100
 precision mediump float;
 varying vec2 vTex;

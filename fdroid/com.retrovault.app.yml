@@ -1,0 +1,59 @@
+# fdroiddata metadata TEMPLATE for Pulsar (P22). This file is submitted to
+# gitlab.com/fdroid/fdroiddata as metadata/com.retrovault.app.yml (direct MR preferred over an
+# RFP issue, per fdroiddata CONTRIBUTING.md). See docs/FDROID.md for the submission checklist —
+# notably the cores-from-source prerequisite that must land BEFORE this can be submitted.
+
+Categories:
+  - Games
+License: GPL-3.0-or-later
+AuthorName: lawrencema000-gif
+AuthorWebSite: https://github.com/lawrencema000-gif
+WebSite: https://github.com/lawrencema000-gif/retrovault
+SourceCode: https://github.com/lawrencema000-gif/retrovault
+IssueTracker: https://github.com/lawrencema000-gif/retrovault/issues
+Changelog: https://github.com/lawrencema000-gif/retrovault/releases
+
+AutoName: Pulsar
+
+# Summary/Description intentionally omitted: F-Droid reads the localized
+# fastlane/metadata/android/en-US/ files from the repo (title, short_description,
+# full_description, changelogs/<versionCode>.txt).
+
+RepoType: git
+Repo: https://github.com/lawrencema000-gif/retrovault.git
+
+# No AntiFeatures declared: cores are compiled from pinned source in the recipe (see build:),
+# the foss flavor has zero proprietary deps (gradle-enforced by :app:verifyFoss*RuntimeClasspath),
+# no crash reporting exists in foss, and the only update check is manual/user-initiated.
+# A reviewer may propose TetheredNet for the hosted homebrew catalog (Supabase) — the emulator
+# and the import-your-own-games path work fully without it; argue that in review.
+
+Builds:
+  - versionName: 1.0.0            # set to the real release
+    versionCode: 2                # set to the real release
+    commit: v1.0.0                # annotated tag on the exact release commit (never a branch)
+    subdir: app
+    submodules: true              # pulls external/ppsspp @ the pinned tag (cores-from-source)
+    sudo:
+      - apt-get update
+      - apt-get install -y cmake ninja-build
+    gradle:
+      - foss                      # assembles fossRelease (flavor dimension "distribution")
+    ndk: r28c                     # matches core-emulator ndkVersion 28.2.13676358
+    build:
+      # Compile the PPSSPP libretro core from the pinned submodule with the same flags CI uses
+      # (-DLIBRETRO=ON, -Wl,-z,max-page-size=16384) and stage the .so into
+      # core-emulator/src/main/jniLibs/<abi>/ before gradle packages it. Runs AFTER the source
+      # scan, so built cores are never flagged as prebuilt binaries.
+      - cd ..
+      - scripts/build-cores.sh "$$NDK$$" arm64-v8a x86_64
+
+# Enable later, once a stable foss release signing key exists, to switch to reproducible
+# publishing of the developer-signed APK:
+# Binaries: https://github.com/lawrencema000-gif/retrovault/releases/download/v%v/pulsar-foss-%v.apk
+# AllowedAPKSigningKeys: <sha256 of the release signing certificate>
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags ^v[0-9.]+$
+CurrentVersion: 1.0.0
+CurrentVersionCode: 2

@@ -3,7 +3,42 @@
 > **✅ All 10 stages' foundations laid and building green.**
 > **📋 Execution now follows [`MASTERPLAN.md`](MASTERPLAN.md) — 27 steps (P1–P27), one per session.**
 > **📍 CURRENT STEP → P5: First light on the user's physical device [DEVICE SESSION — everything is staged]**
-> **   (code steps P6–P17 + P19 + P20 + P21 done on the emulator; P18 + P22–P27 remain.)**
+> **   (code steps P6–P17 + P19–P22 done on the emulator; P18 + P23–P27 remain.)**
+>
+> ✅ **P22 done (2026-07-11, code half):** Release hardening + distribution. **A 3-agent audit
+> workflow (NOTICE completeness / GPL obligations / F-Droid+Play policy) set the verdicts; the
+> design+verify agents hit the subagent session cap, so the design was applied solo against the
+> audits.** **GPL compliance:** license + notice texts now ship **inside the APK** (GPLv3 §4/§6 —
+> a URL is not a copy): NOTICE.md + LICENSE are copied from the repo root at build time
+> (drift-proof gradle task → generated assets) alongside canonical GPL-2.0/Apache-2.0/MIT/OFL-1.1/
+> BSD-3/zlib texts; a new Settings **ABOUT** section renders them (LicensesSheet) with the
+> GPLv3 badge + **source-code link (§6d corresponding-source offer)**. **NOTICE.md corrected per
+> audit (7 fixes):** OFL fonts (Chakra Petch + Manrope — the biggest miss), **AMD FidelityFX FSR
+> RCAS attribution** (the P19 sharpen pass is a port — MIT notice added in NOTICE + in
+> video_gl.cpp), sharp-bilinear lineage, all Maven deps, full-only proprietary SDK rows, libchdr
+> note, stale "planned" section dissolved, "unmodified" statement added. **Update check:**
+> foss-flavor-only (Play build ships ZERO update-check code — Play Device & Network Abuse policy,
+> RetroArch precedent; F-Droid tolerates user-initiated) — manual Settings row → GitHub
+> releases/latest → opens the releases page; 404/no-releases handled as "up to date".
+> **Crash reporting:** Sentry (MIT SDK) full-only via fullImplementation, **opt-in default-OFF**
+> toggle, inert without a DSN (BuildConfig via CI secret, empty today). **🐛 The new test caught
+> a real crash:** Sentry's manifest ContentProvider auto-inits at process start and throws
+> without a DSN → disabled via `io.sentry.auto-init=false` (full manifest); only the explicit
+> gated init path remains. **Distribution:** `fdroid/com.retrovault.app.yml` template +
+> `docs/FDROID.md` (verdict: F-Droid REQUIRES cores built from source — PPSSPP-model submodule +
+> shared build script is the pre-submission blocker; RetroArch's NonFreeNet outcome is what we
+> avoid), fastlane changelog + GPL/source sentence in full_description, PRIVACY.md synced
+> (Sentry/compat/RA sections), `dependenciesInfo.includeInApk=false` (reproducibility), README
+> status refreshed. **16KB re-verified:** all 8 native libs (libpulsar_retro + 3 cores × 2 ABIs)
+> at 0x4000; both release variants assemble; foss gates green. LegalTest (license texts in-APK +
+> update-check truth table) — **OK (2)**; full suite **OK (56 tests)**. **⚠️ CRITICAL LAUNCH
+> DECISION (from the audit, needs the user):** the **full** APK combines the GPL PPSSPP core with
+> proprietary AdMob/UMP/Billing in one binary — PPSSPP's GPL grant has no exception for that, so
+> shipping full-with-ads to Play is a GPL-compliance risk no NOTICE edit cures. Options before
+> Play launch: drop AdMob from full (Gold-only monetization), seek clarity/exception, or
+> restructure. foss is clean. **⚠️ STAGED (accounts/device):** QA matrix, Play listing +
+> data-safety + signing ceremony, F-Droid cores-from-source + submission, 1.0 tag + release with
+> corresponding-source pointers, real Sentry DSN.
 >
 > ✅ **P21 done (2026-07-07):** Monetization — AdMob + Pulsar Gold (Play Billing) + a proprietary-free
 > `foss` flavor. **Product-flavor dimension `distribution`** (`full`/`foss`) on exactly the 3 modules

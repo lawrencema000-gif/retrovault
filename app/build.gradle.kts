@@ -20,6 +20,10 @@ android {
         }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Crash reporting (full flavor, opt-in): empty DSN = Sentry never initializes. The real
+        // DSN arrives via CI secret at release time; never hardcode it.
+        buildConfigField("String", "SENTRY_DSN", "\"${System.getenv("SENTRY_DSN") ?: ""}\"")
     }
 
     // P21 distribution split. `full` = Play Store (Play Billing + AdMob); `foss` = F-Droid/GPL with
@@ -61,7 +65,30 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true   // SENTRY_DSN field (full flavor crash reporting, P22)
     }
+
+    // Reproducible builds (P22): the Play dependency-metadata block is encrypted with Google's
+    // key and unverifiable by F-Droid — keep it out of the APK, keep it in the AAB for Play.
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = true
+    }
+}
+
+// P22 GPL compliance: the APK must carry the license + notice texts (GPLv3 §4/§6 — a URL is not
+// a copy). NOTICE.md and LICENSE are copied from the repo root at build time so the bundled
+// copies can never drift from the canonical ones; static third-party license texts live in
+// app/src/main/assets/legal/. Rendered by the in-app Licenses screen.
+val legalAssetsDir = layout.buildDirectory.dir("generated/legalAssets")
+val copyLegalAssets = tasks.register<Copy>("copyLegalAssets") {
+    from(rootProject.file("NOTICE.md"), rootProject.file("LICENSE"))
+    into(legalAssetsDir.map { it.dir("legal") })
+    rename("LICENSE", "gpl-3.0.txt")
+}
+android.sourceSets["main"].assets.srcDir(legalAssetsDir)
+tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }.configureEach {
+    dependsOn(copyLegalAssets)
 }
 
 dependencies {
@@ -90,6 +117,10 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.androidx.navigation.compose)
+
+    // Crash reporting (P22): full flavor only, opt-in, inert without a DSN. The SDK is MIT but
+    // reports to the proprietary sentry.io service — foss ships zero crash-reporting code.
+    "fullImplementation"(libs.sentry.android)
 
     debugImplementation(libs.androidx.ui.tooling)
 

@@ -1,0 +1,3 @@
+First release: PSP emulation (PPSSPP core) with a built-in store of legally
+redistributable homebrew, import-your-own-games, save states + cloud sync,
+rewind/fast-forward, cheats, RetroAchievements, post-shaders, and gamepad support.

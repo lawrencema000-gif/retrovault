@@ -11,8 +11,12 @@ FEATURES
 
 LEGAL
 Pulsar does not host, bundle, or distribute copyrighted commercial games or console BIOS files.
-Commercial titles and BIOS are supplied by you, from your own legally-obtained copies. The app is
-open-source; complete corresponding source ships with every release.
+Commercial titles and BIOS are supplied by you, from your own legally-obtained copies.
+
+Pulsar is free software under the GNU GPLv3. Complete corresponding source for every release —
+including the exact pinned source of each emulator core — is available at
+https://github.com/lawrencema000-gif/retrovault (each release's notes carry the per-core source
+pointers). License texts are viewable in-app under Settings.
 
 Emulators are legal. Distributing copyrighted ROMs is not — so Pulsar's store contains only content
 we have the right to distribute, and everything else is yours to import.

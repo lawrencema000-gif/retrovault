@@ -24,10 +24,21 @@ per release, monetized with ads and an optional paid "Gold" unlock. See
 
 ## Status
 
-Early scaffold (**Phase 0**). The current build is a Kotlin + Jetpack Compose **storefront
-shell** running on placeholder catalog data, and it **builds cleanly** (`:app:assembleDebug`).
-Next: the multi-module split, Supabase backend + real legal catalog, then the PSP (PPSSPP) core,
-then downloads + import. Full plan in [`docs/PLAN.md`](docs/PLAN.md).
+**PSP milestone nearly complete** — 20 of the 27 master-plan steps
+([`docs/MASTERPLAN.md`](docs/MASTERPLAN.md)) are done; [`docs/STAGES.md`](docs/STAGES.md) is the
+live tracker. Working today, validated by an instrumented suite of **54 tests** on an Android
+emulator: the PPSSPP libretro core running real licensed homebrew end-to-end (live Supabase
+catalog → signed download → sha256 → install → play), GLES3 video with stackable post-shaders +
+rotation, Oboe audio with dynamic rate control, multi-touch + gamepad input, save states with
+cloud sync + 3-way conflict resolution, rewind/fast-forward, per-game settings on a 4-layer
+resolver, compat GameDB, CWCheat support, RetroAchievements (rcheevos, hardcore-compliant), and
+`full`/`foss` product flavors (the foss build is mechanically verified to contain **zero
+proprietary dependencies**). Staged next: on-device validation, Play/F-Droid distribution
+(needs accounts + signing), then PS1 (SwanStation) and PS2 (ARMSX2) bring-up.
+
+Build: `./gradlew :app:assembleFullDebug` (Play-shaped) or `:app:assembleFossDebug` (GPL-clean).
+Tests: `./gradlew :app:connectedFullDebugAndroidTest` (needs an x86_64 AVD + fetched cores via
+`scripts/fetch-cores.ps1`).
 
 ## Tech stack (target)
 

@@ -25,6 +25,7 @@ import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.SystemUpdateAlt
 import androidx.compose.material.icons.filled.Verified
 import com.retrovault.feature.store.about.UpdateResult
@@ -127,14 +128,49 @@ fun SettingsScreen(gameKey: String? = null, gameTitle: String? = null) {
     }
 
     var biosTick by remember { mutableIntStateOf(0) }
+    var biosMessage by remember { mutableStateOf<String?>(null) }
+
+    // Validate BIOS imports by size — real PS1 BIOSes are 512 KB, PS2 4 MB. Without this, ANY
+    // picked file (a photo, a PDF) earned a green "Installed" check and quietly broke the setup.
+    fun importValidatedBios(system: GameSystem, uri: android.net.Uri, expectedBytes: Long) {
+        val file = RomImporter.importBios(context, system, uri)
+        if (file == null) {
+            biosMessage = "Couldn't read that file."
+        } else if (file.length() != expectedBytes) {
+            file.delete()
+            biosMessage = "That file doesn't look like a ${system.name} BIOS " +
+                "(expected ${expectedBytes / 1024} KB). Dump it from your own console."
+        } else {
+            biosMessage = "${system.name} BIOS installed."
+        }
+        biosTick++
+    }
     val ps1Bios = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let { RomImporter.importBios(context, GameSystem.PS1, it); biosTick++ }
+        uri?.let { importValidatedBios(GameSystem.PS1, it, 512L * 1024) }
     }
     val ps2Bios = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let { RomImporter.importBios(context, GameSystem.PS2, it); biosTick++ }
+        uri?.let { importValidatedBios(GameSystem.PS2, it, 4L * 1024 * 1024) }
     }
     val ps1BiosInstalled = remember(biosTick) { BiosStatus.isInstalled(context, GameSystem.PS1) }
     val ps2BiosInstalled = remember(biosTick) { BiosStatus.isInstalled(context, GameSystem.PS2) }
+
+    // Games folder (the onboarding step promised "you can always do this later in Settings" —
+    // this row keeps that promise).
+    var folderTick by remember { mutableIntStateOf(0) }
+    val gamesFolderPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
+            }
+            com.retrovault.core.ui.AppPrefs.setGamesFolderUri(uri.toString())
+            folderTick++
+        }
+    }
 
     // Flavor-resolved: PlayBillingManager (full) or FreeBillingManager (foss). Main never names a
     // proprietary type — createBillingManager is declared in each flavor's source set.
@@ -147,6 +183,7 @@ fun SettingsScreen(gameKey: String? = null, gameTitle: String? = null) {
     var showLicenses by remember { mutableStateOf(false) }
     var updateStatus by remember { mutableStateOf<String?>(null) }
     var updateAvailable by remember { mutableStateOf(false) }
+    var goldMessage by remember { mutableStateOf<String?>(null) }
 
     Column(
         Modifier
@@ -169,7 +206,23 @@ fun SettingsScreen(gameKey: String? = null, gameTitle: String? = null) {
         // Hidden entirely in foss (purchaseSupported == false) — no upgrade path there.
         if (gameKey == null && billing.purchaseSupported) {
             Section("PULSAR GOLD") {
-                GoldRow(isGold) { if (!isGold && activity != null) { billing.purchaseGold(activity); goldTick++ } }
+                GoldRow(isGold) {
+                    if (isGold) return@GoldRow
+                    if (!billing.purchaseReady) {
+                        // No dead taps: without a Play listing the flow can't start — say so.
+                        goldMessage = "Purchases aren't available in this build yet — " +
+                            "Pulsar Gold arrives with the Play Store release."
+                    } else if (activity != null) {
+                        billing.purchaseGold(activity)
+                        goldTick++
+                    }
+                }
+                goldMessage?.let {
+                    Text(
+                        it, fontSize = 11.sp, color = PulsarTextDim,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                }
             }
         }
 
@@ -201,10 +254,44 @@ fun SettingsScreen(gameKey: String? = null, gameTitle: String? = null) {
         }
 
         if (gameKey == null && query.isBlank()) {
+            Text(
+                "Emulation and video changes apply the next time a game starts.",
+                fontSize = 11.sp, color = PulsarTextFaint,
+                modifier = Modifier.padding(top = 10.dp)
+            )
+
+            Section("LIBRARY") {
+                val folderSet = remember(folderTick) {
+                    com.retrovault.core.ui.AppPrefs.gamesFolderUri.isNotEmpty()
+                }
+                ActionRow(
+                    Icons.Filled.FolderOpen, PulsarTeal,
+                    if (folderSet) "Games folder — change" else "Add your games folder",
+                ) { gamesFolderPicker.launch(null) }
+                Text(
+                    "Point Pulsar at a folder of your own PSP game files and they appear in the " +
+                        "library. You can also import single files from the library screen.",
+                    fontSize = 11.sp, lineHeight = 15.sp, color = PulsarTextDim,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                )
+            }
+
             Section("BIOS") {
                 BiosRow("PlayStation", ps1BiosInstalled) { ps1Bios.launch(arrayOf("*/*")) }
                 Divider()
                 BiosRow("PlayStation 2", ps2BiosInstalled) { ps2Bios.launch(arrayOf("*/*")) }
+                biosMessage?.let {
+                    Text(
+                        it, fontSize = 11.sp, color = PulsarTextDim,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                    )
+                }
+                Text(
+                    "PSP needs no BIOS and plays today. PS1 and PS2 support is in development — " +
+                        "you can import your BIOS now, and it will be used when those systems arrive.",
+                    fontSize = 11.sp, lineHeight = 15.sp, color = PulsarTextDim,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                )
             }
 
             Section("CHEATS") {
@@ -230,7 +317,7 @@ fun SettingsScreen(gameKey: String? = null, gameTitle: String? = null) {
                 Divider()
                 StatusRow(
                     Icons.Filled.Memory, PulsarTextBody, "Device class",
-                    DeviceClass.family().name, PulsarTextDim, showCheck = false
+                    DeviceClass.family().name.takeIf { it != "UNKNOWN" } ?: "Standard", PulsarTextDim, showCheck = false
                 )
             }
 
@@ -263,6 +350,11 @@ fun SettingsScreen(gameKey: String? = null, gameTitle: String? = null) {
                             !com.retrovault.core.ui.AppPrefs.crashReportsOptIn
                         )
                     }
+                    Text(
+                        "Off by default. Takes effect the next time the app starts.",
+                        fontSize = 11.sp, color = PulsarTextDim,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                    )
                 }
                 if (updateCheckAvailable()) {
                     Divider()
@@ -662,12 +754,17 @@ private fun CheatDbRow() {
     val manager = remember { com.retrovault.cheats.CheatManager(context) }
     var imported by remember { mutableStateOf(manager.isDbImported) }
     var busy by remember { mutableStateOf(false) }
+    var cheatError by remember { mutableStateOf<String?>(null) }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             busy = true
+            cheatError = null
             scope.launch {
-                imported = manager.importFromUri(uri)
+                val ok = manager.importFromUri(uri)
+                imported = ok
+                // A silent failure looked like "Importing… forever" — say what went wrong.
+                if (!ok) cheatError = "That file isn't a CWCheat cheat.db — nothing was imported."
                 busy = false
             }
         }
@@ -686,6 +783,9 @@ private fun CheatDbRow() {
                     Text("Imported", fontSize = 12.sp, color = PulsarTeal, fontFamily = ChakraPetch)
                 }
             }
+        }
+        cheatError?.let {
+            Text(it, fontSize = 11.sp, color = PulsarYellow, modifier = Modifier.padding(top = 4.dp))
         }
         Spacer(Modifier.height(10.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {

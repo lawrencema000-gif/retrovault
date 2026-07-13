@@ -49,7 +49,7 @@ object PspSettings {
     val TEXTURE_SCALING = SettingDef.Choice(
         key = "psp.video.texture_scaling_level",
         title = "Texture upscaling",
-        description = "AI-free texture upscale (xBRZ). Heavy on some GPUs.",
+        description = "Smooths and sharpens game textures. Can slow down weaker phones.",
         category = Category.VIDEO,
         options = listOf("1" to "Off", "2" to "2×", "3" to "3×", "5" to "5×"),
         defaultOption = "1",
@@ -61,7 +61,7 @@ object PspSettings {
     val DISPLAY_ROTATION = SettingDef.Choice(
         key = "app.display.rotation",
         title = "Screen rotation",
-        description = "Rotate the picture — e.g. 90° for a vertical-shmup TATE setup.",
+        description = "Rotate the picture (some arcade-style games play vertically).",
         category = Category.VIDEO,
         options = listOf("0" to "None", "90" to "90° CW", "180" to "180°", "270" to "270° CW"),
         defaultOption = "0",
@@ -127,7 +127,7 @@ object PspSettings {
     val CPU_CORE = SettingDef.Choice(
         key = "psp.emulation.cpu_core",
         title = "CPU core",
-        description = "JIT is fastest on real devices; IR JIT is the compatible fallback.",
+        description = "Leave on Dynarec unless a game crashes; Interpreter is very slow (debugging only).",
         category = Category.EMULATION,
         options = listOf(
             "JIT" to "Dynarec (JIT)",
@@ -141,7 +141,7 @@ object PspSettings {
     val FAST_MEMORY = SettingDef.Toggle(
         key = "psp.emulation.fast_memory",
         title = "Fast memory",
-        description = "Unstable-but-fast memory access. Turn off if a game crashes.",
+        description = "Faster but less safe memory access — turn off if a game crashes.",
         category = Category.EMULATION,
         defaultValue = true,
         coreVariable = "ppsspp_fast_memory",
@@ -159,9 +159,9 @@ object PspSettings {
     val GRAPHICS_BACKEND = SettingDef.Choice(
         key = "app.video.backend",
         title = "Graphics backend",
-        description = "Vulkan support arrives later; failed backends are blacklisted per device.",
+        description = "OpenGL ES 3 is used today; Vulkan arrives in a later update.",
         category = Category.VIDEO,
-        options = listOf("gles3" to "OpenGL ES 3", "vulkan" to "Vulkan (experimental)"),
+        options = listOf("gles3" to "OpenGL ES 3", "vulkan" to "Vulkan (not available yet)"),
         defaultOption = "gles3",
         coreVariable = null,
     )

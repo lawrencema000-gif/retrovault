@@ -40,6 +40,7 @@ class PlayBillingManager(private val context: Context) : BillingManager {
 
     override val isGold: Boolean get() = entitlements.isGold
     override val purchaseSupported: Boolean = true
+    override val purchaseReady: Boolean get() = productDetails != null
 
     private val purchasesListener = PurchasesUpdatedListener { result, purchases ->
         if (result.responseCode == BillingClient.BillingResponseCode.OK && purchases != null) {

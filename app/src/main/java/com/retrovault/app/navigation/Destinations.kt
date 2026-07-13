@@ -13,7 +13,10 @@ sealed class Destination(val route: String) {
     data object Library : Destination("library")
     data object Saves : Destination("saves")
     data object Controls : Destination("controls")
-    data object Settings : Destination("settings")
+    data object Settings : Destination("settings?gameKey={gameKey}") {
+        /** Per-game settings entry (from the game-detail Settings tile). */
+        fun create(gameKey: String) = "settings?gameKey=$gameKey"
+    }
     data object Detail : Destination("detail/{gameId}") {
         fun create(gameId: String) = "detail/$gameId"
     }

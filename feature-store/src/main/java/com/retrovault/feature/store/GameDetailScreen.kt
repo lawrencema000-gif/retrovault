@@ -41,7 +41,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
-import kotlinx.coroutines.delay
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.collectAsState
+import com.retrovault.download.DownloadStatus
+import com.retrovault.settings.PspSettings
+import com.retrovault.settings.SettingsResolver
 import com.retrovault.download.DownloadManager
 import com.retrovault.download.GameInstaller
 import com.retrovault.saves.SaveStateManager
@@ -83,14 +88,45 @@ fun GameDetailScreen(
     gameId: String,
     onBack: () -> Unit,
     onPlay: (String, String, GameSystem, String?, Boolean) -> Unit = { _, _, _, _, _ -> },
+    onOpenSaves: () -> Unit = {},
+    onOpenControls: () -> Unit = {},
+    onOpenSettings: (String) -> Unit = {},
 ) {
-    val game = remember(gameId) {
-        SupabaseCatalogRepository.cachedById(gameId) ?: CatalogRepository.byId(gameId)
+    // The in-memory catalog cache dies with the process; after process death (recents restore),
+    // refetch before declaring the game missing — and always leave a way back.
+    var gameState by remember(gameId) {
+        mutableStateOf(SupabaseCatalogRepository.cachedById(gameId) ?: CatalogRepository.byId(gameId))
+    }
+    var lookedUp by remember(gameId) { mutableStateOf(gameState != null) }
+    LaunchedEffect(gameId) {
+        if (gameState == null) {
+            runCatching { SupabaseCatalogRepository.fetchGames() }
+            gameState = SupabaseCatalogRepository.cachedById(gameId) ?: CatalogRepository.byId(gameId)
+            lookedUp = true
+        }
     }
 
+    val game = gameState
     if (game == null) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("Game not found", color = PulsarTextDim)
+        Column(
+            Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            if (!lookedUp) {
+                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+            } else {
+                Text("Game not found", color = PulsarTextDim)
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    "Back to library",
+                    color = PulsarPrimary,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { onBack() }
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+            }
         }
         return
     }
@@ -99,16 +135,15 @@ fun GameDetailScreen(
     var installedPath by remember(gameId) {
         mutableStateOf(GameInstaller.installedPlayable(context, game.system, game.slug)?.absolutePath)
     }
-    var downloading by remember(gameId) { mutableStateOf(false) }
-    LaunchedEffect(downloading) {
-        // Poll for install completion while the WorkManager job runs.
-        while (downloading) {
-            delay(700)
-            val p = GameInstaller.installedPlayable(context, game.system, game.slug)
-            if (p != null) {
-                installedPath = p.absolutePath
-                downloading = false
-            }
+    // Real download state from WorkManager — survives leaving the screen and can say FAILED
+    // (the old remembered-bool + filesystem poll could do neither).
+    val downloadStatus by DownloadManager.status(context, game.id)
+        .collectAsState(initial = DownloadStatus.NONE)
+    val downloading = downloadStatus == DownloadStatus.DOWNLOADING && installedPath == null
+    val downloadFailed = downloadStatus == DownloadStatus.FAILED && installedPath == null
+    LaunchedEffect(downloadStatus) {
+        if (downloadStatus == DownloadStatus.SUCCEEDED) {
+            installedPath = GameInstaller.installedPlayable(context, game.system, game.slug)?.absolutePath
         }
     }
 
@@ -146,11 +181,9 @@ fun GameDetailScreen(
                 Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
+                // The favorite/"..." buttons were inert decorations — removed until they do
+                // something real (dead taps read as "the app is broken" to a new user).
                 RoundIconButton(Icons.AutoMirrored.Filled.ArrowBack, onClick = onBack)
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    RoundIconButton(Icons.Filled.FavoriteBorder, onClick = {}, tint = PulsarFav)
-                    RoundIconButton(Icons.Filled.MoreHoriz, onClick = {})
-                }
             }
 
             // floating cover
@@ -245,6 +278,7 @@ fun GameDetailScreen(
                 hasAutoSave -> "CONTINUE"
                 installed -> "PLAY"
                 downloading -> "DOWNLOADING…"
+                downloadFailed -> "DOWNLOAD FAILED — RETRY"
                 game.downloadable -> "DOWNLOAD"
                 else -> "COMING SOON"
             }
@@ -266,11 +300,15 @@ fun GameDetailScreen(
                         if (installed) {
                             onPlay(game.id, game.title, game.system, installedPath, hasAutoSave)
                         } else if (game.downloadable) {
-                            DownloadManager.enqueue(
-                                context, game.id, game.slug, game.system,
-                                wifiOnly = false, // P11 settings expose the Wi-Fi-only toggle
-                            )
-                            downloading = true
+                            // Honor the user's Wi-Fi-only setting (it defaults ON and was being
+                            // silently ignored — a real cellular-data cost trap).
+                            val wifiOnly = SettingsResolver(context)
+                                .resolve(PspSettings.WIFI_ONLY_DOWNLOADS).asBoolean
+                            if (downloadFailed) {
+                                DownloadManager.retry(context, game.id, game.slug, game.system, wifiOnly)
+                            } else {
+                                DownloadManager.enqueue(context, game.id, game.slug, game.system, wifiOnly)
+                            }
                         }
                     },
                 contentAlignment = Alignment.Center
@@ -293,12 +331,13 @@ fun GameDetailScreen(
                 }
             }
 
-            // action row
+            // action row — real destinations (these were inert decorations; every dead tap
+            // erodes a new user's trust that anything works)
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                ActionTile(Icons.Filled.Save, PulsarPrimary, "Save States", Modifier.weight(1f))
-                ActionTile(Icons.Filled.VideogameAsset, PulsarTeal, "Controls", Modifier.weight(1f))
-                ActionTile(Icons.Filled.Tune, PulsarYellow, "Settings", Modifier.weight(1f))
+                ActionTile(Icons.Filled.Save, PulsarPrimary, "Save States", Modifier.weight(1f)) { onOpenSaves() }
+                ActionTile(Icons.Filled.VideogameAsset, PulsarTeal, "Controls", Modifier.weight(1f)) { onOpenControls() }
+                ActionTile(Icons.Filled.Tune, PulsarYellow, "Settings", Modifier.weight(1f)) { onOpenSettings(game.id) }
             }
 
             // about
@@ -412,17 +451,24 @@ private fun MetaChip(icon: ImageVector, iconTint: Color, text: String) {
 }
 
 @Composable
-private fun ActionTile(icon: ImageVector, tint: Color, label: String, modifier: Modifier = Modifier) {
+private fun ActionTile(
+    icon: ImageVector,
+    tint: Color,
+    label: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit = {},
+) {
     Column(
         modifier
             .clip(RoundedCornerShape(16.dp))
+            .clickable { onClick() }
             .background(PulsarSurface1)
             .border(1.dp, PulsarStrokeSoft, RoundedCornerShape(16.dp))
             .padding(vertical = 16.dp, horizontal = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(7.dp)
     ) {
-        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(24.dp))
+        Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(24.dp))
         Text(label, fontSize = 11.sp, color = PulsarTextSoft)
     }
 }

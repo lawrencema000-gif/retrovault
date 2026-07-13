@@ -19,6 +19,7 @@ object AppPrefs {
     private const val KEY_OLED = "oled_black"
     private const val KEY_LANG = "language_tag"
     private const val KEY_CRASH_OPT_IN = "crash_reports_opt_in"
+    private const val KEY_GAMES_FOLDER = "games_folder_uri"
 
     private var prefs: android.content.SharedPreferences? = null
 
@@ -26,6 +27,7 @@ object AppPrefs {
     private var oledBlackState by mutableStateOf(false)
     private var languageTagState by mutableStateOf("")
     private var crashReportsOptInState by mutableStateOf(false)
+    private var gamesFolderUriState by mutableStateOf("")
 
     val onboardingSeen: Boolean get() = onboardingSeenState
     val oledBlack: Boolean get() = oledBlackState
@@ -36,6 +38,9 @@ object AppPrefs {
     /** Opt-in crash reporting (default OFF; only the `full` flavor has a reporter at all). */
     val crashReportsOptIn: Boolean get() = crashReportsOptInState
 
+    /** SAF tree URI of the user's games folder (onboarding pick), or "" if never chosen. */
+    val gamesFolderUri: String get() = gamesFolderUriState
+
     fun init(context: Context) {
         val p = context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
         prefs = p
@@ -43,6 +48,7 @@ object AppPrefs {
         oledBlackState = p.getBoolean(KEY_OLED, false)
         languageTagState = p.getString(KEY_LANG, "") ?: ""
         crashReportsOptInState = p.getBoolean(KEY_CRASH_OPT_IN, false)
+        gamesFolderUriState = p.getString(KEY_GAMES_FOLDER, "") ?: ""
     }
 
     fun setOnboardingSeen(value: Boolean) {
@@ -63,5 +69,10 @@ object AppPrefs {
     fun setCrashReportsOptIn(value: Boolean) {
         crashReportsOptInState = value
         prefs?.edit()?.putBoolean(KEY_CRASH_OPT_IN, value)?.apply()
+    }
+
+    fun setGamesFolderUri(uri: String) {
+        gamesFolderUriState = uri
+        prefs?.edit()?.putString(KEY_GAMES_FOLDER, uri)?.apply()
     }
 }

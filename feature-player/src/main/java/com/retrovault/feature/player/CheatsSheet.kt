@@ -129,7 +129,7 @@ fun BoxScope.CheatsSheet(
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Enabling a cheat disables achievements for this session.",
+                    "Cheats will disable achievements once RetroAchievements support arrives.",
                     fontSize = 9.sp, color = PulsarTextFaint
                 )
             }

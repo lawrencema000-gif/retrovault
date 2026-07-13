@@ -12,6 +12,7 @@ class FreeBillingManager(context: Context) : BillingManager {
     private val entitlements = Entitlements(context)
     override val isGold: Boolean get() = entitlements.isGold
     override val purchaseSupported: Boolean = false
+    override val purchaseReady: Boolean = false
     override fun purchaseGold(activity: Activity) { /* no purchase path in foss */ }
     override fun restore() { /* nothing to restore */ }
 }

@@ -17,6 +17,12 @@ interface BillingManager {
     /** False in `foss` (no purchase path) — store chrome hides the upgrade row when false. */
     val purchaseSupported: Boolean
 
+    /**
+     * True once the Play product is actually queryable (billing connected + listing configured).
+     * False in dev builds with no Play listing — the UI must say so instead of a dead tap.
+     */
+    val purchaseReady: Boolean
+
     /** Launch the Play purchase flow. Needs an [Activity]; a no-op where purchase isn't supported. */
     fun purchaseGold(activity: Activity)
 

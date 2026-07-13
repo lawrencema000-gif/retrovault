@@ -136,8 +136,18 @@ fun BoxScope.SlotManagerSheet(
                             color = PulsarText, fontWeight = FontWeight.SemiBold, fontSize = 13.sp
                         )
                         Text(
-                            info?.let { DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(it.updatedAtEpochMs)) }
-                                ?: "Empty",
+                            if (slot == SaveStateManager.AUTO_SLOT) {
+                                // Explains the missing Save/Delete buttons + what feeds "Continue".
+                                (info?.let {
+                                    DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
+                                        .format(Date(it.updatedAtEpochMs)) + " · "
+                                } ?: "") + "Written automatically when you quit — powers Continue"
+                            } else {
+                                info?.let {
+                                    DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
+                                        .format(Date(it.updatedAtEpochMs))
+                                } ?: "Empty"
+                            },
                             color = PulsarTextDim, fontSize = 11.sp
                         )
                     }

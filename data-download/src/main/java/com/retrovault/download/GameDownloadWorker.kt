@@ -26,6 +26,10 @@ class GameDownloadWorker(context: Context, params: WorkerParameters) :
             ?.let { runCatching { GameSystem.valueOf(it) }.getOrNull() }
             ?: return@withContext Result.failure()
 
+        // Cap retries: without a cap, a dead URL or persistent network error retries FOREVER and
+        // the UI can never say "failed" — the user stares at DOWNLOADING… for eternity.
+        if (runAttemptCount >= MAX_ATTEMPTS) return@withContext Result.failure()
+
         try {
             val signed = SignedUrlClient.request(gameId)
             val fileName = signed.fileName ?: "$gameId.bin"
@@ -67,5 +71,6 @@ class GameDownloadWorker(context: Context, params: WorkerParameters) :
         const val KEY_SLUG = "slug"
         const val KEY_SYSTEM = "system"
         const val OUT_PLAYABLE_PATH = "playablePath"
+        const val MAX_ATTEMPTS = 4
     }
 }

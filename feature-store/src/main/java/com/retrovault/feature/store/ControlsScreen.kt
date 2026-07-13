@@ -83,7 +83,13 @@ fun ControlsScreen() {
             .padding(horizontal = 22.dp)
     ) {
         Text("Controls", fontFamily = ChakraPetch, fontWeight = FontWeight.Bold, fontSize = 22.sp, color = PulsarText)
-        Text("Tap a binding to remap", fontSize = 12.sp, color = PulsarTextDim)
+        // Honest copy: the remap UI hasn't shipped yet — pads auto-map from the SDL database and
+        // touch controls are always available in-game; don't invite taps that do nothing.
+        Text(
+            "Touch controls are always on in-game. Gamepads map automatically " +
+                "(SDL controller database) — custom remapping arrives in a later update.",
+            fontSize = 12.sp, color = PulsarTextDim
+        )
 
         // layout preview
         Spacer(Modifier.height(22.dp))

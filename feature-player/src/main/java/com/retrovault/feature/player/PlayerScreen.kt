@@ -88,28 +88,66 @@ fun PlayerScreen(
     saveStates: com.retrovault.saves.SaveStateManager? = null,
     onScreenshot: () -> Unit = {},
     onCheats: () -> Unit = {},
+    toast: String? = null,
+    onToastDone: () -> Unit = {},
 ) {
     var showMenu by remember { mutableStateOf(false) }
     var showSlots by remember { mutableStateOf(false) }
     var fastForward by remember { mutableStateOf(false) }
+    // Transient feedback for quick actions (save/load/rewind/screenshot were silent before).
+    var localToast by remember { mutableStateOf<String?>(null) }
+    androidx.compose.runtime.LaunchedEffect(toast) {
+        if (toast != null) { localToast = toast; onToastDone() }
+    }
+    androidx.compose.runtime.LaunchedEffect(localToast) {
+        if (localToast != null) { kotlinx.coroutines.delay(2200); localToast = null }
+    }
     // Gamepad MENU virtkey opens the quick menu (counter bump per press).
     androidx.compose.runtime.LaunchedEffect(menuRequests) {
         if (menuRequests > 0) showMenu = true
     }
     val running = session.status == CoreStatus.RUNNING
+    // Opening the menu pauses the game (universal expectation) — but never clobber a pause set
+    // by someone else (controller-disconnect): only unpause what the menu itself paused.
+    var pausedByMenu by remember { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(showMenu, showSlots) {
+        val menuOpen = showMenu || showSlots
+        if (menuOpen && !session.paused) {
+            session.paused = true
+            pausedByMenu = true
+        } else if (!menuOpen && pausedByMenu) {
+            session.paused = false
+            pausedByMenu = false
+        }
+    }
+    // Loading overlay until the first real frame lands — a black screen for the boot seconds
+    // otherwise reads as a crash.
+    var firstFrameSeen by remember { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(running) {
+        while (running && !firstFrameSeen) {
+            if (com.retrovault.emulator.LibretroBridge.nativeFramesPresented() > 0) firstFrameSeen = true
+            else kotlinx.coroutines.delay(120)
+        }
+    }
     // Predictive back: the system back gesture opens the pause/quick menu; a second back
     // (with the menu open) dismisses it. Quitting is an explicit menu action.
     androidx.activity.compose.BackHandler(enabled = running && !showMenu && !showSlots) { showMenu = true }
     androidx.activity.compose.BackHandler(enabled = showMenu) { showMenu = false }
     val ctx = LocalContext.current
+    // Plain language, in priority order — and never claim "no game loaded" when the truth is
+    // that this system's emulator isn't shipped yet (UNAVAILABLE).
     val statusMsg = when {
         running -> null
+        session.status == CoreStatus.UNAVAILABLE && system != GameSystem.PSP ->
+            "${system.shortCode} support arrives in a future update"
+        session.status == CoreStatus.UNAVAILABLE ->
+            "The emulator couldn't start — try reinstalling Pulsar"
         CoreCatalog.requiresBios(system) && !BiosStatus.isInstalled(ctx, system) ->
-            "IMPORT A ${system.shortCode} BIOS TO PLAY"
+            "Playing ${system.shortCode} games needs a BIOS from your own console — import it in Settings › BIOS"
         system == GameSystem.PS2 && !DeviceCapabilities.supportsPs2(ctx) ->
-            "DEVICE MAY NOT RUN PS2 WELL"
-        session.status == CoreStatus.ERROR -> "CORE FAILED TO START"
-        else -> "NO GAME LOADED · ${system.shortCode}"
+            "This device may be too slow for PS2"
+        session.status == CoreStatus.ERROR -> "This game couldn't start — try re-downloading it"
+        else -> "Nothing is playing"
     }
 
     Box(
@@ -229,10 +267,14 @@ fun PlayerScreen(
                 onDismiss = { showMenu = false },
                 // Session is NOT stopped here: the activity's teardown auto-saves first
                 // (stopping now would skip the auto-save and lose "Continue").
-                onQuit = onQuit,
+                onQuit = { showMenu = false; onQuit() },
                 onSaveState = { onSaveState(); showMenu = false },
                 onLoadState = { onLoadState(); showMenu = false },
-                onRewind = { session.rewindStep(); showMenu = false },
+                onRewind = {
+                    val ok = session.rewindStep()
+                    localToast = if (ok) "Rewound" else "Nothing to rewind yet"
+                    showMenu = false
+                },
                 onScreenshot = { onScreenshot(); showMenu = false },
                 onSlots = if (saveStates != null) ({ showSlots = true; showMenu = false }) else null,
                 onCheats = { onCheats(); showMenu = false },
@@ -244,6 +286,41 @@ fun PlayerScreen(
                 manager = saveStates,
                 onDismiss = { showSlots = false },
             )
+        }
+
+        // Boot overlay: the seconds between PLAY and the first presented frame are a black
+        // screen otherwise, which reads as a crash to anyone new.
+        if (running && !firstFrameSeen) {
+            Column(
+                Modifier.matchParentSize().background(Color(0xE0030508)),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    title,
+                    fontFamily = ChakraPetch, fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp, color = PulsarText
+                )
+                Spacer(Modifier.height(14.dp))
+                androidx.compose.material3.CircularProgressIndicator(color = PulsarYellow)
+                Spacer(Modifier.height(10.dp))
+                Text("Starting…", fontSize = 12.sp, color = PulsarTextDim)
+            }
+        }
+
+        // Transient action feedback ("Saved to Slot 1", "Nothing to rewind yet", …).
+        localToast?.let { msg ->
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 56.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xE0121A2A))
+                    .border(1.dp, PulsarStroke, RoundedCornerShape(12.dp))
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
+            ) {
+                Text(msg, fontSize = 12.sp, color = PulsarText)
+            }
         }
 
         // Auto-pause scrim (controller disconnected mid-game).

@@ -51,6 +51,7 @@ class EmulatorActivity : ComponentActivity() {
     private var menuRequests by mutableIntStateOf(0)
     private var showCompatPrompt by mutableStateOf(false)
     private var showCheats by mutableStateOf(false)
+    private var playerToast by mutableStateOf<String?>(null)
     private var cheatTick by mutableIntStateOf(0)
 
     // Compat reporting context (P13).
@@ -206,23 +207,21 @@ class EmulatorActivity : ComponentActivity() {
                         saveStates = saveStates,
                         onScreenshot = {
                             lifecycleScope.launch {
+                                // No share-sheet hijack mid-game: confirm quietly; the shot is in
+                                // the gallery (Photos > Pulsar) where sharing lives anyway.
                                 val shot = com.retrovault.saves.Screenshots.capture(
                                     applicationContext, "${gameKey ?: "game"}-${System.currentTimeMillis()}"
                                 )
-                                shot?.galleryUri?.let { uri ->
-                                    val send = Intent(Intent.ACTION_SEND).apply {
-                                        type = "image/png"
-                                        putExtra(Intent.EXTRA_STREAM, uri)
-                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    }
-                                    runCatching {
-                                        startActivity(Intent.createChooser(send, "Share screenshot")
-                                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                                    }
+                                playerToast = when {
+                                    shot == null -> "Screenshot failed"
+                                    shot.galleryUri != null -> "Saved to Photos › Pulsar"
+                                    else -> "Screenshot saved"
                                 }
                             }
                         },
                         onCheats = { showCheats = true },
+                        toast = playerToast,
+                        onToastDone = { playerToast = null },
                     )
 
                     val mgr = cheatManager
@@ -324,7 +323,14 @@ class EmulatorActivity : ComponentActivity() {
     private fun quickSlotOp(save: Boolean) {
         val mgr = saveStates ?: return
         lifecycleScope.launch {
-            if (save) mgr.save(QUICK_SLOT) else mgr.load(QUICK_SLOT)
+            // Silent success/failure taught users not to trust these buttons — always confirm.
+            val ok = if (save) mgr.save(QUICK_SLOT) else mgr.load(QUICK_SLOT)
+            playerToast = when {
+                save && ok -> "Saved to Slot $QUICK_SLOT"
+                save -> "Save failed"
+                ok -> "Loaded Slot $QUICK_SLOT"
+                else -> "No save in Slot $QUICK_SLOT yet"
+            }
         }
     }
 

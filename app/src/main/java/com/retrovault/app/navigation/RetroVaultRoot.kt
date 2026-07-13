@@ -83,11 +83,24 @@ fun RetroVaultRoot() {
                 })
             }
             composable(Destination.Library.route) {
-                HomeScreen(onGameClick = { id -> navController.navigate(Destination.Detail.create(id)) })
+                val context = LocalContext.current
+                HomeScreen(
+                    onGameClick = { id -> navController.navigate(Destination.Detail.create(id)) },
+                    onPlayLocal = { path, title, system, serial ->
+                        context.startActivity(
+                            EmulatorActivity.intent(context, serial, title, system, path, false)
+                        )
+                    },
+                )
             }
             composable(Destination.Saves.route) { SavesScreen() }
             composable(Destination.Controls.route) { ControlsScreen() }
-            composable(Destination.Settings.route) { SettingsScreen() }
+            composable(
+                route = Destination.Settings.route,
+                arguments = listOf(navArgument("gameKey") { nullable = true; defaultValue = null })
+            ) { entry ->
+                SettingsScreen(gameKey = entry.arguments?.getString("gameKey"))
+            }
             composable(
                 route = Destination.Detail.route,
                 arguments = listOf(navArgument("gameId") { type = NavType.StringType })
@@ -101,7 +114,12 @@ fun RetroVaultRoot() {
                         context.startActivity(
                             EmulatorActivity.intent(context, id, title, system, gamePath, resume)
                         )
-                    }
+                    },
+                    onOpenSaves = { navController.navigate(Destination.Saves.route) },
+                    onOpenControls = { navController.navigate(Destination.Controls.route) },
+                    onOpenSettings = { gameKey ->
+                        navController.navigate(Destination.Settings.create(gameKey))
+                    },
                 )
             }
         }

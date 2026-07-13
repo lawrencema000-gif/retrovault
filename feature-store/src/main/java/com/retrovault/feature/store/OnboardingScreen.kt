@@ -78,16 +78,24 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                     Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
                 )
             }
+            // Persist the tree so the library can actually scan it (the whole point of the pick).
+            com.retrovault.core.ui.AppPrefs.setGamesFolderUri(uri.toString())
             folderPicked = true
         }
     }
 
-    val controllerConnected = remember {
-        InputDevice.getDeviceIds().any { id ->
-            InputDevice.getDevice(id)?.let {
-                it.sources and InputDevice.SOURCE_GAMEPAD == InputDevice.SOURCE_GAMEPAD ||
-                    it.sources and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK
-            } == true
+    // Polled (not remembered once): a user pairs their pad ON this screen to make the check
+    // pass — a one-shot evaluation told them "not detected" forever.
+    var controllerConnected by remember { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        while (true) {
+            controllerConnected = InputDevice.getDeviceIds().any { id ->
+                InputDevice.getDevice(id)?.let {
+                    it.sources and InputDevice.SOURCE_GAMEPAD == InputDevice.SOURCE_GAMEPAD ||
+                        it.sources and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK
+                } == true
+            }
+            kotlinx.coroutines.delay(1000)
         }
     }
 
@@ -115,10 +123,10 @@ fun OnboardingScreen(onFinish: () -> Unit) {
             when (step) {
                 0 -> Step(
                     Icons.Filled.Gavel, PulsarTeal, "Welcome to Pulsar",
-                    "A legal PSP emulator and storefront. Pulsar hosts only games their authors " +
-                        "allow us to share — homebrew, public-domain, and open-source titles. " +
-                        "For everything else, you import your own game backups and console BIOS " +
-                        "from your device. No copyrighted ROMs are ever bundled.",
+                    "Play PSP games on your phone — legally. Pulsar's store offers free games " +
+                        "made by hobbyists (\"homebrew\") whose creators allow sharing. Own a " +
+                        "real PSP game? Copy its game file from your disc to this phone and " +
+                        "play it here. Pulsar never includes copyrighted games itself.",
                 )
                 1 -> Step(
                     Icons.Filled.FolderOpen, PulsarPrimary,

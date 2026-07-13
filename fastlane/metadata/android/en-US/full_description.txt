@@ -2,7 +2,7 @@ Pulsar is an open-source (GPLv3) emulator for portable and classic PlayStation-f
 with a built-in store of games that are legally free to distribute.
 
 FEATURES
-- Emulates PSP, PS1 and PS2 via well-established open-source cores.
+- Emulates PSP today via the proven PPSSPP core; PS1 and PS2 support is in development.
 - A curated store of homebrew, public-domain, freeware and permissively-licensed indie games —
   browse cover art, tap, download and play.
 - Import your own games and console BIOS from your device (Storage Access Framework).

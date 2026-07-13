@@ -51,6 +51,9 @@ fun BoxScope.CompatRatingSheet(
     var audio by remember { mutableIntStateOf(0) }
     var speed by remember { mutableIntStateOf(0) }
 
+    // Back-to-dismiss is the universal expectation on a modal sheet — back = skip.
+    androidx.activity.compose.BackHandler { onSkip() }
+
     Box(
         Modifier
             .matchParentSize()

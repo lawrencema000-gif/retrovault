@@ -5,6 +5,26 @@
 > **📍 CURRENT STEP → P5: First light on the user's physical device [DEVICE SESSION — everything is staged]**
 > **   (code steps P6–P17 + P19–P22 done on the emulator; P18 + P23–P27 remain.)**
 >
+> ✅ **NOVICE SELF-AUDIT + FIX BATCH (2026-07-12, commit 1405649 — suite OK 56):** a 6-journey
+> "complete emulator novice" walkthrough (multi-agent, adversarially verified where capacity
+> allowed) found and fixed the app's worst traps. **The flagship: "import your own games" was a
+> silent dead end** — files were copied to a directory nothing read, onboarding dropped the picked
+> folder URI, and the fully-tested P6 library engine had ZERO UI callers. Now: **ON THIS DEVICE**
+> library section (ICON0 art, tap-to-play, SAF copy-on-play, import feedback, onboarding folder
+> persisted + scanned, Settings LIBRARY row, PS1/PS2 files labeled future). **Store truth:** the
+> six placeholder seed games were LIVE in the real catalog — unpublished (3 real titles remain);
+> download CTA now observes WorkManager (FAILED—RETRY reachable, retries capped, Wi-Fi-only
+> setting honored — it was silently ignored); detail-page dead controls removed/wired (per-game
+> settings route added); Home search works; header no longer claims "Your Library"/"Welcome back"
+> on first run. **Player:** menu now pauses the game; boot spinner (black screen read as a crash);
+> quick save/load/rewind/screenshot give feedback; screenshot no longer hijacks with a share
+> chooser; plain-language standby copy + real UNAVAILABLE branch; back skips the rating sheet.
+> **Settings:** BIOS imports size-validated (any file used to earn "Installed ✓"); cheat.db
+> failure message; honest Vulkan label; de-jargoned copy; launcher renamed RetroVault→**Pulsar**.
+> Deferred (recorded): download progress %, cross-process live-apply of video settings,
+> singleTask onNewIntent edge, licenses-sheet perf, Gold feature gating via Entitlements.has(),
+> scanTree full-file-copy perf on huge folders.
+>
 > ✅ **P22 done (2026-07-11, code half):** Release hardening + distribution. **A 3-agent audit
 > workflow (NOTICE completeness / GPL obligations / F-Droid+Play policy) set the verdicts; the
 > design+verify agents hit the subagent session cap, so the design was applied solo against the

@@ -3,7 +3,22 @@
 > **✅ All 10 stages' foundations laid and building green.**
 > **📋 Execution now follows [`MASTERPLAN.md`](MASTERPLAN.md) — 27 steps (P1–P27), one per session.**
 > **📍 CURRENT STEP → P5: First light on the user's physical device [DEVICE SESSION — everything is staged]**
-> **   (code steps P6–P17 + P19–P23 done on the emulator; P18 + P24–P27 remain.)**
+> **   (code steps P6–P17 + P19–P24 done on the emulator; P18 + P25–P27 remain.)**
+>
+> ✅ **P24 done (2026-07-14, code half — commits 9788970 + f725034):** PS1 polish. **Right analog
+> end-to-end** (native snapshot → JNI → InputHub → GamepadMapper stick routing → SDL-db rightx/
+> righty) — **and a latent P7 bug fixed: the floating TOUCH stick never reached the core**
+> (InputHub.push sent pad values only; now pushes the merged sticks — re-verify on device).
+> **Ps1Settings registry** (renderer / resolution scale / PGXP / true color / widescreen + aspect)
+> mapped to source-verified `swanstation_*` keys (guard test pins each string). **DualShock
+> selection**: no core option exists — new `nativeSetControllerDevice` (digital=1 / DualShock=261,
+> run-loop-latched) + `ForceAnalog` so sticks work immediately; DualShock is the default.
+> **GameShark paste import** (import-only): `Ps1CheatCodes.normalize` emits the exact
+> `retro_cheat_set` format ('+'-joined 8+4 hex pairs — the core rejects newlines and has no
+> decryption); per-serial manual-code storage merged into the cheat list; CheatsSheet "+ Add a
+> GameShark code" panel on PS1 sessions (@Serializable fix on Cheat caught by the round-trip
+> test). Ps1Test now 8 tests — full suite **OK (65)** + foss gate. **Deferred to device:**
+> dual-stick TOUCH layout (feel work), PS1 full-speed-with-PGXP acceptance.
 >
 > ✅ **P23 done (2026-07-14, code half — commit 48418cf):** PS1 bring-up (SwanStation). **Research
 > workflow (3 researchers + adversarial verifier, all primary-source):** SwanStation pinned by SHA

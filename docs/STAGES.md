@@ -3,7 +3,25 @@
 > **✅ All 10 stages' foundations laid and building green.**
 > **📋 Execution now follows [`MASTERPLAN.md`](MASTERPLAN.md) — 27 steps (P1–P27), one per session.**
 > **📍 CURRENT STEP → P5: First light on the user's physical device [DEVICE SESSION — everything is staged]**
-> **   (code steps P6–P17 + P19–P22 done on the emulator; P18 + P23–P27 remain.)**
+> **   (code steps P6–P17 + P19–P23 done on the emulator; P18 + P24–P27 remain.)**
+>
+> ✅ **P23 done (2026-07-14, code half — commit 48418cf):** PS1 bring-up (SwanStation). **Research
+> workflow (3 researchers + adversarial verifier, all primary-source):** SwanStation pinned by SHA
+> `f901022198da` (no upstream tags exist), GPL-3.0, deps vendored; **the sector math was verified
+> byte-exact against DuckStation's iso_reader.cpp** before shipping. **Key finding: SwanStation
+> embeds an OpenBIOS fallback (MIT, PCSX-Redux) — PS1 boots WITHOUT a user BIOS** → BIOS is now
+> "recommended, never required" (requiresBios(PS1)=false; the player no longer blocks). **CI** builds
+> `swanstation_libretro_android.so` for both ABIs (buildbot-mirror invocation + 16KB flag + readelf
+> gate). **Identification:** `DiscSectorSource` (raw 2352-byte .bin: sync-sniff, MODE1 +16 /
+> MODE2-XA +24) + `CueSheet` + `Ps1Serial` (SYSTEM.CNF BOOT → `SLUS-12345`; PSX.EXE homebrew →
+> stable fake id) + GameIdentifier PS1 branch + scanner content-refinement (no more PS1-as-fake-PSP
+> misfiles). **BIOS-by-hash:** `Ps1Bios` (24 canonical dumps, MD5 — the same set the core's own
+> bios.cpp matches); Settings import identifies + renames to the canonical filename ("Recognized:
+> NTSC-U v3.0 → scph5501.bin"), rejects imposters; EmulatorActivity stages imported dumps into the
+> libretro system dir (top-level, where the core scans). **GameDB:** none to import — SwanStation's
+> per-game compat is compiled-in GPLv3 code; the core applies it natively (NOTICE records this +
+> the OpenBIOS attribution + pin). Ps1Test — **OK (5)**; full suite **OK (61 tests)**. **STAGED
+> (device session):** boot a real PS1 game (CI core .so + a user game dump; BIOS optional).
 >
 > ✅ **NOVICE SELF-AUDIT + FIX BATCH (2026-07-12, commit 1405649 — suite OK 56):** a 6-journey
 > "complete emulator novice" walkthrough (multi-agent, adversarially verified where capacity

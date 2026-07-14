@@ -130,6 +130,11 @@ std::mutex g_varsMutex;
 std::map<std::string, std::string> g_coreVars;
 std::atomic<bool> g_varsDirty{false};
 
+// Controller device type (P24): PS1 pad selection (digital vs DualShock) via
+// retro_set_controller_port_device — applied on the run-loop thread before the next retro_run.
+std::atomic<uint32_t> g_pendingControllerDevice{0};
+std::atomic<bool> g_controllerDevicePending{false};
+
 // Cheats (P14): the enabled cheat codes (CWCheat text) are pushed from Kotlin; the run-loop
 // thread applies them via retro_cheat_reset + retro_cheat_set (must run on the emu thread).
 std::mutex g_cheatMutex;
@@ -875,6 +880,9 @@ Java_com_retrovault_emulator_LibretroBridge_nativeRunLoop(JNIEnv*, jobject) {
         g_video.callContextResetOnce();
         applyRewindConfig();
         applyCheatsIfDirty();
+        if (g_controllerDevicePending.exchange(false) && g_core.retro_set_controller_port_device) {
+            g_core.retro_set_controller_port_device(0, g_pendingControllerDevice.load());
+        }
         rc_bridge_service(); // RetroAchievements: drain command + HTTP-completion queues
 
         // Speed: ≥200% batches N runs per presented frame (only the last is audible/shown);
@@ -1213,6 +1221,14 @@ Java_com_retrovault_emulator_LibretroBridge_nativeApplyCheats(JNIEnv* env, jobje
         g_cheats = std::move(next);
     }
     g_cheatsDirty = true;
+}
+
+// P24: choose the emulated controller on port 0 (e.g. PS1 digital=1 vs DualShock=261).
+// Latched and applied by the run-loop thread before the next frame.
+JNIEXPORT void JNICALL
+Java_com_retrovault_emulator_LibretroBridge_nativeSetControllerDevice(JNIEnv*, jobject, jint device) {
+    g_pendingControllerDevice = (uint32_t)device;
+    g_controllerDevicePending = true;
 }
 
 JNIEXPORT jboolean JNICALL

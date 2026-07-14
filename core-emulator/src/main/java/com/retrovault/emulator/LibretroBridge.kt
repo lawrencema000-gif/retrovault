@@ -139,6 +139,12 @@ object LibretroBridge {
     /** Whether the loaded core exposes the libretro cheat interface. */
     external fun nativeCoreSupportsCheats(): Boolean
 
+    /**
+     * Select the emulated controller on port 0 via retro_set_controller_port_device (applied on
+     * the run-loop thread before the next frame). PS1: digital pad = 1, DualShock = 261.
+     */
+    external fun nativeSetControllerDevice(device: Int)
+
     /** Number of currently-enabled cheats — 0 in hardcore (cheats are cleared when it turns on). */
     external fun nativeActiveCheatCount(): Int
 

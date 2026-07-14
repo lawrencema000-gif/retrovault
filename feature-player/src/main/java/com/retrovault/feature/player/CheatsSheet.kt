@@ -42,8 +42,10 @@ import com.retrovault.core.ui.theme.ChakraPetch
 import com.retrovault.core.ui.theme.PulsarPrimary
 import com.retrovault.core.ui.theme.PulsarStroke
 import com.retrovault.core.ui.theme.PulsarText
+import com.retrovault.core.ui.theme.PulsarTeal
 import com.retrovault.core.ui.theme.PulsarTextDim
 import com.retrovault.core.ui.theme.PulsarTextFaint
+import com.retrovault.core.ui.theme.PulsarYellow
 
 /**
  * In-game cheats list: per-game CWCheat toggles with search. Empty states cover "no cheat.db
@@ -56,8 +58,14 @@ fun BoxScope.CheatsSheet(
     entries: List<CheatEntry>,
     onToggle: (name: String, enabled: Boolean) -> Unit,
     onDismiss: () -> Unit,
+    // P24 (PS1): paste-a-code import. Returns an error message, or null on success.
+    onAddCode: ((name: String, pasted: String) -> String?)? = null,
 ) {
     var query by remember { mutableStateOf("") }
+    var addOpen by remember { mutableStateOf(false) }
+    var codeName by remember { mutableStateOf("") }
+    var codeText by remember { mutableStateOf("") }
+    var addError by remember { mutableStateOf<String?>(null) }
     val visible = remember(entries, query) {
         if (query.isBlank()) entries
         else entries.filter { it.cheat.name.contains(query, true) }
@@ -83,8 +91,46 @@ fun BoxScope.CheatsSheet(
             Text("Cheats", fontFamily = ChakraPetch, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = PulsarText)
         }
 
+        if (onAddCode != null && hasSerial) {
+            Spacer(Modifier.height(10.dp))
+            Text(
+                if (addOpen) "Cancel" else "+ Add a GameShark code",
+                fontSize = 13.sp, color = PulsarPrimary,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { addOpen = !addOpen; addError = null }
+                    .padding(vertical = 6.dp, horizontal = 4.dp)
+            )
+            if (addOpen) {
+                CheatField(value = codeName, onChange = { codeName = it }, hint = "Cheat name")
+                Spacer(Modifier.height(6.dp))
+                CheatField(
+                    value = codeText, onChange = { codeText = it },
+                    hint = "Paste unencrypted code lines, e.g. 80092E60 0063",
+                    singleLine = false,
+                )
+                addError?.let {
+                    Text(it, fontSize = 11.sp, color = PulsarYellow, modifier = Modifier.padding(top = 4.dp))
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Save code",
+                    fontSize = 13.sp, color = PulsarTeal,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable {
+                            val err = onAddCode(codeName.trim(), codeText)
+                            if (err == null) {
+                                addOpen = false; codeName = ""; codeText = ""; addError = null
+                            } else addError = err
+                        }
+                        .padding(vertical = 6.dp, horizontal = 4.dp)
+                )
+            }
+        }
+
         when {
-            !dbImported -> EmptyNote(
+            !dbImported && entries.isEmpty() && onAddCode == null -> EmptyNote(
                 "No cheat database imported.",
                 "Import a CWCheat cheat.db in Settings → Cheats. Pulsar never bundles cheat data."
             )
@@ -176,6 +222,35 @@ private fun EmptyNote(title: String, body: String) {
         Spacer(Modifier.height(4.dp))
         Text(body, fontSize = 11.sp, lineHeight = 16.sp, color = PulsarTextFaint)
     }
+}
+
+@Composable
+private fun CheatField(
+    value: String,
+    onChange: (String) -> Unit,
+    hint: String,
+    singleLine: Boolean = true,
+) {
+    BasicTextField(
+        value = value,
+        onValueChange = onChange,
+        singleLine = singleLine,
+        textStyle = TextStyle(color = PulsarText, fontSize = 13.sp),
+        cursorBrush = SolidColor(PulsarPrimary),
+        decorationBox = { inner ->
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0x0AFFFFFF))
+                    .border(1.dp, PulsarStroke, RoundedCornerShape(12.dp))
+                    .padding(horizontal = 14.dp, vertical = 11.dp)
+            ) {
+                if (value.isEmpty()) Text(hint, fontSize = 13.sp, color = PulsarTextFaint)
+                inner()
+            }
+        }
+    )
 }
 
 @Composable

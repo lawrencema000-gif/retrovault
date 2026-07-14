@@ -149,6 +149,23 @@ class EmulatorActivity : ComponentActivity() {
             session.start(this, system, gamePath)
         }
 
+        // PS1 (P24): pick the emulated pad. SwanStation has NO core option for this — it is
+        // selected via retro_set_controller_port_device (digital=1, DualShock=261), and the core
+        // defaults to the digital pad. ForceAnalog makes DualShock sticks live immediately
+        // (no in-game analog-toggle combo needed).
+        if (system == GameSystem.PS1 && LibretroBridge.available) {
+            val padChoice = settings
+                .resolve(com.retrovault.settings.Ps1Settings.PS1_CONTROLLER, gameKeyForSettings).value
+            val dualshock = padChoice == "dualshock"
+            LibretroBridge.nativeSetControllerDevice(
+                if (dualshock) com.retrovault.settings.Ps1Settings.DEVICE_DUALSHOCK
+                else com.retrovault.settings.Ps1Settings.DEVICE_DIGITAL
+            )
+            LibretroBridge.nativeSetCoreVariable(
+                "swanstation_Controller1_ForceAnalog", if (dualshock) "true" else "false"
+            )
+        }
+
         // Slot manager keyed by game id (falls back to file name for imported games).
         val gameKey = intent.getStringExtra(EXTRA_GAME_ID)
             ?: gamePath?.substringAfterLast('/')?.substringBeforeLast('.')
@@ -256,6 +273,24 @@ class EmulatorActivity : ComponentActivity() {
                                 cheatTick++
                             },
                             onDismiss = { showCheats = false },
+                            // PS1 (P24): paste-a-code import. SwanStation parses raw unencrypted
+                            // hex pairs; multi-line codes are '+'-joined (newlines are rejected).
+                            onAddCode = if (system == GameSystem.PS1) { name, pasted ->
+                                val normalized = com.retrovault.cheats.Ps1CheatCodes.normalize(pasted)
+                                when {
+                                    name.isBlank() -> "Give the cheat a name."
+                                    normalized == null ->
+                                        "That doesn't look like an unencrypted GameShark code " +
+                                            "(lines of 8+4 hex digits)."
+                                    !mgr.addManualCode(gameSerial, name, normalized) ->
+                                        "A cheat with that name already exists."
+                                    else -> {
+                                        applyCheats()
+                                        cheatTick++
+                                        null
+                                    }
+                                }
+                            } else null,
                         )
                     }
 

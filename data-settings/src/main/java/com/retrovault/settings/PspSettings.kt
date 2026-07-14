@@ -201,5 +201,6 @@ object PspSettings {
         GRAPHICS_BACKEND, WIFI_ONLY_DOWNLOADS, REWIND_ENABLED, HAPTICS,
     )
 
-    fun byKey(key: String): SettingDef? = ALL.firstOrNull { it.key == key }
+    fun byKey(key: String): SettingDef? =
+        (ALL + Ps1Settings.ALL).firstOrNull { it.key == key }
 }

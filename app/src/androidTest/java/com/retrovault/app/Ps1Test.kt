@@ -117,6 +117,63 @@ class Ps1Test {
         fake.delete(); small.delete()
     }
 
+    // ---- P24: GameShark code normalization (SwanStation's verified retro_cheat_set format) ----
+    @Test
+    fun gamesharkNormalizationTruthTable() {
+        val n = com.retrovault.cheats.Ps1CheatCodes::normalize
+        // Multi-line codes join with '+' (the core REJECTS newlines).
+        assertEquals("80092E60 0063+80092E62 0000", n("80092E60 0063\n80092E62 0000"))
+        // Alternate separators + comments + blank lines normalize away.
+        assertEquals("80092E60 0063", n("  80092E60:0063  "))
+        assertEquals("80092E60 0063", n("# infinite lives\n80092e60-0063"))
+        assertEquals("80092E60 0063", n("80092E600063"))            // fused 12-hex form
+        // Rejections: not hex pairs.
+        assertNull(n("hello world"))
+        assertNull(n("80092E60"))                                    // word without value
+        assertNull(n("80092E60 0063\nnot a code"))                   // one bad line poisons the block
+        assertNull(n(""))
+    }
+
+    /** Guard the verified SwanStation option keys — a typo'd key silently no-ops in the core. */
+    @Test
+    fun ps1SettingsUseVerifiedCoreOptionKeys() {
+        val expected = mapOf(
+            com.retrovault.settings.Ps1Settings.RENDERER to "swanstation_GPU_Renderer",
+            com.retrovault.settings.Ps1Settings.RESOLUTION_SCALE to "swanstation_GPU_ResolutionScale",
+            com.retrovault.settings.Ps1Settings.PGXP to "swanstation_GPU_PGXPEnable",
+            com.retrovault.settings.Ps1Settings.TRUE_COLOR to "swanstation_GPU_TrueColor",
+            com.retrovault.settings.Ps1Settings.WIDESCREEN to "swanstation_GPU_WidescreenHack",
+            com.retrovault.settings.Ps1Settings.ASPECT_RATIO to "swanstation_Display_AspectRatio",
+        )
+        for ((def, key) in expected) {
+            assertEquals("core-option key drifted for ${def.key}", key, def.coreVariable)
+        }
+        // Controller type is NOT a core variable (device id via retro_set_controller_port_device).
+        assertNull(com.retrovault.settings.Ps1Settings.PS1_CONTROLLER.coreVariable)
+        assertEquals(1, com.retrovault.settings.Ps1Settings.DEVICE_DIGITAL)
+        assertEquals(261, com.retrovault.settings.Ps1Settings.DEVICE_DUALSHOCK)
+        // And the resolver actually surfaces the PS1 defs.
+        val all = com.retrovault.settings.SettingsResolver(ctx).resolveAll(null)
+        assertTrue("resolver must include PS1 settings",
+            all.any { it.def.key == com.retrovault.settings.Ps1Settings.PGXP.key })
+    }
+
+    /** Manual (pasted) cheats persist per serial and merge into the cheat list. */
+    @Test
+    fun manualCheatRoundTrip() {
+        val mgr = com.retrovault.cheats.CheatManager(ctx)
+        val serial = "SLUS-99998"
+        mgr.removeManualCode(serial, "Test Moon Jump")
+        assertTrue(mgr.addManualCode(serial, "Test Moon Jump", "80092E60 0063+80092E62 0000"))
+        assertFalse("duplicate name must be refused", mgr.addManualCode(serial, "Test Moon Jump", "80000000 0000"))
+        val entry = mgr.entriesFor(serial).firstOrNull { it.cheat.name == "Test Moon Jump" }
+        assertNotNull("manual cheat missing from entries", entry)
+        mgr.setEnabled(serial, "Test Moon Jump", true)
+        assertTrue(mgr.enabledCodes(serial).contains("80092E60 0063+80092E62 0000"))
+        mgr.removeManualCode(serial, "Test Moon Jump")
+        assertTrue(mgr.entriesFor(serial).none { it.cheat.name == "Test Moon Jump" })
+    }
+
     // ------------------------------------------------------------------ synthetic disc builder
 
     /**

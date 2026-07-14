@@ -33,7 +33,7 @@ class SettingsResolver(
     }
 
     fun resolveAll(gameKey: String? = null): List<ResolvedSetting> =
-        PspSettings.ALL.map { resolve(it, gameKey) }
+        (PspSettings.ALL + Ps1Settings.ALL).map { resolve(it, gameKey) }
 
     fun setUserValue(def: SettingDef, value: String, gameKey: String? = null) {
         store.set(gameKey, def.key, value)

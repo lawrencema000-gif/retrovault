@@ -4,6 +4,7 @@ package com.retrovault.cheats
  * One cheat parsed from a CWCheat `cheat.db`: display [name], the raw code text handed to the
  * core (`_L` lines joined by newlines), and whether the DB marked it on by default.
  */
+@kotlinx.serialization.Serializable
 data class Cheat(
     val name: String,
     val code: String,

@@ -84,7 +84,42 @@ class CheatManager(private val context: Context) {
 
     fun availableFor(serial: String?): List<Cheat> {
         if (serial == null) return emptyList()
-        return db()[CheatDb.canonicalSerial(serial)] ?: emptyList()
+        val fromDb = db()[CheatDb.canonicalSerial(serial)] ?: emptyList()
+        return fromDb + manualCheats(serial)
+    }
+
+    // ---- manual codes (P24: pasted PS1 GameShark / AR codes, per serial) ----
+
+    /**
+     * Add a user-pasted code (already normalized — e.g. via [Ps1CheatCodes.normalize] for PS1).
+     * Returns false when a manual cheat with that name already exists for the serial.
+     */
+    fun addManualCode(serial: String?, name: String, code: String): Boolean {
+        if (serial == null || name.isBlank() || code.isBlank()) return false
+        val current = manualCheats(serial)
+        if (current.any { it.name == name }) return false
+        writeManual(serial, current + Cheat(name = name, code = code, defaultOn = false))
+        return true
+    }
+
+    fun removeManualCode(serial: String?, name: String) {
+        if (serial == null) return
+        writeManual(serial, manualCheats(serial).filterNot { it.name == name })
+        setEnabled(serial, name, enabled = false)
+    }
+
+    private fun manualFile(serial: String) =
+        File(dir, "manual-${CheatDb.canonicalSerial(serial)}.json")
+
+    private fun manualCheats(serial: String?): List<Cheat> {
+        if (serial == null) return emptyList()
+        val f = manualFile(serial)
+        if (!f.isFile) return emptyList()
+        return runCatching { json.decodeFromString<List<Cheat>>(f.readText()) }.getOrDefault(emptyList())
+    }
+
+    private fun writeManual(serial: String, cheats: List<Cheat>) {
+        runCatching { manualFile(serial).writeText(json.encodeToString(cheats)) }
     }
 
     /** Cheats for a serial with their persisted enabled state (default-on honored first run). */

@@ -71,7 +71,7 @@ class EmulatorSession {
 
     /** Push the input snapshot to the core (call after mutating [input]). */
     fun syncInput(eventTimeNs: Long = 0L) {
-        LibretroBridge.nativeSetInput(0, input.buttons, input.analogLX, input.analogLY, eventTimeNs)
+        LibretroBridge.nativeSetInput(0, input.buttons, input.analogLX, input.analogLY, input.analogRX, input.analogRY, eventTimeNs)
     }
 
     /** Freeze/unfreeze emulation in place (menu open, gamepad unplugged). */

@@ -114,6 +114,8 @@ bool g_haveMemMap = false;
 std::atomic<int32_t> g_buttons{0};
 std::atomic<int32_t> g_analogLX{0};
 std::atomic<int32_t> g_analogLY{0};
+std::atomic<int32_t> g_analogRX{0};   // right stick (PS1 DualShock, P24)
+std::atomic<int32_t> g_analogRY{0};
 
 // input->frame latency instrumentation: newest event timestamp not yet sampled by the core
 std::atomic<int64_t> g_lastInputEventNs{0};
@@ -366,6 +368,10 @@ int16_t input_state_cb(unsigned port, unsigned device, unsigned index, unsigned 
     if (device == RETRO_DEVICE_ANALOG && index == RETRO_DEVICE_INDEX_ANALOG_LEFT) {
         if (id == RETRO_DEVICE_ID_ANALOG_X) return (int16_t)g_analogLX.load();
         if (id == RETRO_DEVICE_ID_ANALOG_Y) return (int16_t)g_analogLY.load();
+    }
+    if (device == RETRO_DEVICE_ANALOG && index == RETRO_DEVICE_INDEX_ANALOG_RIGHT) {
+        if (id == RETRO_DEVICE_ID_ANALOG_X) return (int16_t)g_analogRX.load();
+        if (id == RETRO_DEVICE_ID_ANALOG_Y) return (int16_t)g_analogRY.load();
     }
     return 0;
 }
@@ -764,6 +770,8 @@ Java_com_retrovault_emulator_LibretroBridge_nativeStartSession(
     g_buttons = 0;
     g_analogLX = 0;
     g_analogLY = 0;
+    g_analogRX = 0;
+    g_analogRY = 0;
     g_lastInputEventNs = 0;
     g_inputLatencyUsEma = 0;
     g_inputEventsSampled = 0;
@@ -963,11 +971,13 @@ Java_com_retrovault_emulator_LibretroBridge_nativeIsRunning(JNIEnv*, jobject) {
 
 JNIEXPORT void JNICALL
 Java_com_retrovault_emulator_LibretroBridge_nativeSetInput(
-    JNIEnv*, jobject, jint port, jint buttons, jint lx, jint ly, jlong eventTimeNs) {
+    JNIEnv*, jobject, jint port, jint buttons, jint lx, jint ly, jint rx, jint ry, jlong eventTimeNs) {
     if (port == 0) {
         g_buttons = buttons;
         g_analogLX = lx;
         g_analogLY = ly;
+        g_analogRX = rx;
+        g_analogRY = ry;
         if (eventTimeNs > 0) g_lastInputEventNs = eventTimeNs;
     }
 }

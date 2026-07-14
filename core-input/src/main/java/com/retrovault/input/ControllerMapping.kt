@@ -80,6 +80,11 @@ object DefaultMapping {
             MappingProfile.Binding(InputSource.Axis(MotionEvent.AXIS_X, +1), InputTarget.Analog(0, 0, +1)),
             MappingProfile.Binding(InputSource.Axis(MotionEvent.AXIS_Y, -1), InputTarget.Analog(0, 1, -1)),
             MappingProfile.Binding(InputSource.Axis(MotionEvent.AXIS_Y, +1), InputTarget.Analog(0, 1, +1)),
+            // Right stick (Android standard: AXIS_Z / AXIS_RZ) -> RetroPad right analog (P24).
+            MappingProfile.Binding(InputSource.Axis(MotionEvent.AXIS_Z, -1), InputTarget.Analog(1, 0, -1)),
+            MappingProfile.Binding(InputSource.Axis(MotionEvent.AXIS_Z, +1), InputTarget.Analog(1, 0, +1)),
+            MappingProfile.Binding(InputSource.Axis(MotionEvent.AXIS_RZ, -1), InputTarget.Analog(1, 1, -1)),
+            MappingProfile.Binding(InputSource.Axis(MotionEvent.AXIS_RZ, +1), InputTarget.Analog(1, 1, +1)),
         ),
     )
 

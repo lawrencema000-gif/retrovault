@@ -92,13 +92,21 @@ class GamepadMapper(
         var next = buttons
         var lx = 0f
         var ly = 0f
+        var rx = 0f
+        var ry = 0f
 
         for ((source, target) in idx.axisBindings) {
             val raw = event.getAxisValue(source.axis)
             when (target) {
                 is InputTarget.Analog -> {
-                    if (target.axis == 0) lx = accumulate(lx, raw, source, target)
-                    else ly = accumulate(ly, raw, source, target)
+                    // stick 0 = left, 1 = right (PS1 DualShock right stick, P24)
+                    if (target.stick == 1) {
+                        if (target.axis == 0) rx = accumulate(rx, raw, source, target)
+                        else ry = accumulate(ry, raw, source, target)
+                    } else {
+                        if (target.axis == 0) lx = accumulate(lx, raw, source, target)
+                        else ly = accumulate(ly, raw, source, target)
+                    }
                 }
 
                 is InputTarget.Button -> {
@@ -125,6 +133,12 @@ class GamepadMapper(
         hub.onPadAnalog(
             (tx * 32767f).toInt().coerceIn(-32767, 32767),
             (ty * 32767f).toInt().coerceIn(-32767, 32767),
+            event.eventTime * 1_000_000L,
+        )
+        val (trx, try_) = tuneAnalog(rx, ry, p)
+        hub.onPadAnalogRight(
+            (trx * 32767f).toInt().coerceIn(-32767, 32767),
+            (try_ * 32767f).toInt().coerceIn(-32767, 32767),
             event.eventTime * 1_000_000L,
         )
 

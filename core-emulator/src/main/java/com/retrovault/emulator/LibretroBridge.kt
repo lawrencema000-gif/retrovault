@@ -60,7 +60,12 @@ object LibretroBridge {
      * [eventTimeNs] = the originating Android input event time (uptime-based, ns) for
      * input→frame latency instrumentation; pass 0 when not applicable.
      */
-    external fun nativeSetInput(port: Int, buttons: Int, analogLX: Int, analogLY: Int, eventTimeNs: Long)
+    external fun nativeSetInput(
+        port: Int, buttons: Int,
+        analogLX: Int, analogLY: Int,
+        analogRX: Int, analogRY: Int,
+        eventTimeNs: Long,
+    )
 
     /** Current button bitmask as seen by the core-side snapshot (tests/debug overlay). */
     external fun nativeDebugButtons(): Int

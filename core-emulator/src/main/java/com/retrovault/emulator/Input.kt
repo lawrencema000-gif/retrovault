@@ -35,8 +35,14 @@ class InputState {
     @Volatile
     var analogLY: Int = 0
 
+    @Volatile
+    var analogRX: Int = 0
+
+    @Volatile
+    var analogRY: Int = 0
+
     fun press(mask: Int) { buttons = buttons or mask }
     fun release(mask: Int) { buttons = buttons and mask.inv() }
     fun set(mask: Int, down: Boolean) { if (down) press(mask) else release(mask) }
-    fun clear() { buttons = 0; analogLX = 0; analogLY = 0 }
+    fun clear() { buttons = 0; analogLX = 0; analogLY = 0; analogRX = 0; analogRY = 0 }
 }

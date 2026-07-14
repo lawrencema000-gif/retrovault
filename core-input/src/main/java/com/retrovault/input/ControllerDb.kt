@@ -62,6 +62,8 @@ object ControllerDb {
         // PSP has one stick; right stick intentionally unmapped by default.
         "leftx" to InputTarget.Analog(0, 0, +1),
         "lefty" to InputTarget.Analog(0, 1, +1),
+        "rightx" to InputTarget.Analog(1, 0, +1),
+        "righty" to InputTarget.Analog(1, 1, +1),
     )
 
     data class DbEntry(val guid: String, val name: String, val fields: Map<String, String>) {

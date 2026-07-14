@@ -18,6 +18,10 @@ class InputHub {
     private var padAnalogY: Int = 0
     private var touchAnalogX: Int = 0
     private var touchAnalogY: Int = 0
+    private var padAnalogRX: Int = 0
+    private var padAnalogRY: Int = 0
+    private var touchAnalogRX: Int = 0
+    private var touchAnalogRY: Int = 0
 
     fun onTouchState(buttons: Int, eventTimeNs: Long) {
         touchButtons = buttons
@@ -41,6 +45,19 @@ class InputHub {
         push(eventTimeNs)
     }
 
+    /** Right stick (PS1 DualShock; P24). */
+    fun onPadAnalogRight(x: Int, y: Int, eventTimeNs: Long) {
+        padAnalogRX = x
+        padAnalogRY = y
+        push(eventTimeNs)
+    }
+
+    fun onTouchAnalogRight(x: Int, y: Int, eventTimeNs: Long) {
+        touchAnalogRX = x
+        touchAnalogRY = y
+        push(eventTimeNs)
+    }
+
     val combinedButtons: Int get() = touchButtons or padButtons
 
     // Whichever source is deflected further wins (touch stick vs physical stick).
@@ -48,6 +65,11 @@ class InputHub {
         get() = if (mag(touchAnalogX, touchAnalogY) >= mag(padAnalogX, padAnalogY)) touchAnalogX else padAnalogX
     val analogY: Int
         get() = if (mag(touchAnalogX, touchAnalogY) >= mag(padAnalogX, padAnalogY)) touchAnalogY else padAnalogY
+
+    val analogRX: Int
+        get() = if (mag(touchAnalogRX, touchAnalogRY) >= mag(padAnalogRX, padAnalogRY)) touchAnalogRX else padAnalogRX
+    val analogRY: Int
+        get() = if (mag(touchAnalogRX, touchAnalogRY) >= mag(padAnalogRX, padAnalogRY)) touchAnalogRY else padAnalogRY
 
     private fun mag(x: Int, y: Int): Long = x.toLong() * x + y.toLong() * y
 
@@ -58,12 +80,20 @@ class InputHub {
         padAnalogY = 0
         touchAnalogX = 0
         touchAnalogY = 0
+        padAnalogRX = 0
+        padAnalogRY = 0
+        touchAnalogRX = 0
+        touchAnalogRY = 0
         push(0L)
     }
 
     private fun push(eventTimeNs: Long) {
         if (LibretroBridge.available) {
-            LibretroBridge.nativeSetInput(0, combinedButtons, padAnalogX, padAnalogY, eventTimeNs)
+            // MERGED analog (P24 fix): this previously pushed the PAD values only, silently
+            // dropping the floating touch stick before it ever reached the core.
+            LibretroBridge.nativeSetInput(
+                0, combinedButtons, analogX, analogY, analogRX, analogRY, eventTimeNs,
+            )
         }
     }
 }

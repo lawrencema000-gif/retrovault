@@ -127,6 +127,22 @@ class EmulatorActivity : ComponentActivity() {
         gameSerial = serial
         sessionStartMs = System.currentTimeMillis()
 
+        // PS1 (P23): the SwanStation core looks for BIOS files at the TOP LEVEL of the libretro
+        // system dir (non-recursive). Stage any imported dumps from bios/PS1/ into it — the core
+        // falls back to its built-in OpenBIOS when none exist, so this is best-effort.
+        if (system == GameSystem.PS1) {
+            runCatching {
+                val sysDir = java.io.File(filesDir, "system").apply { mkdirs() }
+                com.retrovault.download.RomStorage.biosDir(applicationContext, GameSystem.PS1)
+                    .listFiles()?.filter { it.isFile && it.length() > 0 }?.forEach { bios ->
+                        val dest = java.io.File(sysDir, bios.name)
+                        if (!dest.exists() || dest.length() != bios.length()) {
+                            bios.copyTo(dest, overwrite = true)
+                        }
+                    }
+            }
+        }
+
         if (coreOverride != null) {
             session.start(this, coreOverride, gamePath)
         } else {

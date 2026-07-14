@@ -9,7 +9,7 @@ work is distributed under GPLv3 with changes stated in the git history of this r
 | Core | Upstream | License | Pinned revision |
 |---|---|---|---|
 | ppsspp_libretro (PSP) | https://github.com/hrydgard/ppsspp | GPL-2.0-or-later | `v1.20.4` (`fa50bb1976065c4f8b1b47af227d367fe9771555`) |
-| swanstation_libretro (PS1) | https://github.com/libretro/swanstation | GPL-3.0 | _to be pinned at P23_ |
+| swanstation_libretro (PS1) | https://github.com/libretro/swanstation | GPL-3.0 | `f901022198dacf125d43331c6540492441ab415b` (main, 2026-06-29 — upstream has no tags) |
 | PS2 core | ARMSX2 lineage (evaluation at P25) | GPL-3.0 | _to be pinned at P25_ |
 
 > Cores and GPL data files are built from / copied byte-identical from the pinned upstream
@@ -17,7 +17,11 @@ work is distributed under GPLv3 with changes stated in the git history of this r
 > compilation" part of their Corresponding Source (GPLv3 §1). The CI-built `ppsspp_libretro`
 > core additionally compiles in libchdr (BSD-3-Clause) for CHD disc-image support, plus
 > PPSSPP's other vendored `ext/` components, all from the pinned unmodified upstream tree;
-> none of these are part of `libpulsar_retro.so`.
+> none of these are part of `libpulsar_retro.so`. The CI-built `swanstation_libretro` core
+> vendors its own deps (`dep/`: libchdr, glad, vixl, vulkan-loader, libretro-common, …) and
+> embeds **OpenBIOS** (MIT, © 2019 PCSX-Redux authors — `dep/openbios/`) as a built-in PS1
+> BIOS fallback; its per-game compatibility settings are compiled-in GPLv3 code derived from
+> pre-relicense DuckStation (no external gamedb file exists).
 
 ## Libraries and headers
 

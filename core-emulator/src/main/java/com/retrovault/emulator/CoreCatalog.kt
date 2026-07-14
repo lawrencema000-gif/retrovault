@@ -17,6 +17,9 @@ object CoreCatalog {
 
     fun requiresBios(system: GameSystem): Boolean = when (system) {
         GameSystem.PSP -> false
-        GameSystem.PS1, GameSystem.PS2 -> true
+        // SwanStation embeds an OpenBIOS fallback (MIT, PCSX-Redux) — PS1 boots without a user
+        // BIOS; a real dump is recommended for compatibility but never REQUIRED to play (P23).
+        GameSystem.PS1 -> false
+        GameSystem.PS2 -> true
     }
 }

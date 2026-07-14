@@ -73,6 +73,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.filled.Search
 import com.retrovault.core.model.GameSystem
 import com.retrovault.download.BiosStatus
+import com.retrovault.download.Ps1Bios
 import com.retrovault.download.RomImporter
 import com.retrovault.billing.createBillingManager
 import com.retrovault.settings.Category
@@ -130,26 +131,45 @@ fun SettingsScreen(gameKey: String? = null, gameTitle: String? = null) {
     var biosTick by remember { mutableIntStateOf(0) }
     var biosMessage by remember { mutableStateOf<String?>(null) }
 
-    // Validate BIOS imports by size — real PS1 BIOSes are 512 KB, PS2 4 MB. Without this, ANY
-    // picked file (a photo, a PDF) earned a green "Installed" check and quietly broke the setup.
-    fun importValidatedBios(system: GameSystem, uri: android.net.Uri, expectedBytes: Long) {
-        val file = RomImporter.importBios(context, system, uri)
+    // Validate BIOS imports. PS1: identified BY HASH against the canonical dump table (P23) and
+    // renamed to the filename the SwanStation core expects; PS2: size-validated until P25.
+    // Without validation, ANY picked file (a photo, a PDF) earned a green "Installed" check.
+    fun importPs1Bios(uri: android.net.Uri) {
+        val file = RomImporter.importBios(context, GameSystem.PS1, uri)
         if (file == null) {
             biosMessage = "Couldn't read that file."
-        } else if (file.length() != expectedBytes) {
-            file.delete()
-            biosMessage = "That file doesn't look like a ${system.name} BIOS " +
-                "(expected ${expectedBytes / 1024} KB). Dump it from your own console."
         } else {
-            biosMessage = "${system.name} BIOS installed."
+            val known = Ps1Bios.identify(file)
+            if (known == null) {
+                file.delete()
+                biosMessage = "That file isn't a recognized PS1 BIOS dump (512 KB, from your " +
+                    "own console). Nothing was imported."
+            } else {
+                // Canonical rename so the core's filename-first lookup finds it.
+                val dest = java.io.File(file.parentFile, known.filename)
+                if (dest != file) { dest.delete(); file.renameTo(dest) }
+                biosMessage = "Recognized: ${known.region} ${known.version} → ${known.filename}"
+            }
+        }
+        biosTick++
+    }
+    fun importPs2Bios(uri: android.net.Uri) {
+        val file = RomImporter.importBios(context, GameSystem.PS2, uri)
+        if (file == null) {
+            biosMessage = "Couldn't read that file."
+        } else if (file.length() != 4L * 1024 * 1024) {
+            file.delete()
+            biosMessage = "That file doesn't look like a PS2 BIOS (expected 4096 KB)."
+        } else {
+            biosMessage = "PS2 BIOS installed."
         }
         biosTick++
     }
     val ps1Bios = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let { importValidatedBios(GameSystem.PS1, it, 512L * 1024) }
+        uri?.let { importPs1Bios(it) }
     }
     val ps2Bios = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let { importValidatedBios(GameSystem.PS2, it, 4L * 1024 * 1024) }
+        uri?.let { importPs2Bios(it) }
     }
     val ps1BiosInstalled = remember(biosTick) { BiosStatus.isInstalled(context, GameSystem.PS1) }
     val ps2BiosInstalled = remember(biosTick) { BiosStatus.isInstalled(context, GameSystem.PS2) }
@@ -287,8 +307,9 @@ fun SettingsScreen(gameKey: String? = null, gameTitle: String? = null) {
                     )
                 }
                 Text(
-                    "PSP needs no BIOS and plays today. PS1 and PS2 support is in development — " +
-                        "you can import your BIOS now, and it will be used when those systems arrive.",
+                    "PSP needs no BIOS. PS1 games can run without one (a built-in substitute is " +
+                        "used), but a BIOS dumped from your own console is recommended for " +
+                        "compatibility. PS2 support is still in development.",
                     fontSize = 11.sp, lineHeight = 15.sp, color = PulsarTextDim,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
                 )

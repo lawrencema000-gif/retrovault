@@ -13,6 +13,8 @@ on:
 env:
   # Pinned upstream revisions — update deliberately, never track master.
   PPSSPP_REF: "v1.20.4" # fa50bb1976065c4f8b1b47af227d367fe9771555
+  # libretro/swanstation has NO tags/releases — pin by SHA (main @ 2026-06-29, P23 research-verified).
+  SWANSTATION_REF: "f901022198dacf125d43331c6540492441ab415b"
   SAMPLES_REF: "bce193bc1b8c9a3da43b2ead0158a69e28b37ed8" # libretro-samples (test cores)
   ANDROID_PLATFORM: "android-26"
 
@@ -83,6 +85,75 @@ jobs:
         with:
           name: ppsspp_libretro-${{ matrix.abi }}-${{ env.PPSSPP_REF }}
           path: out/${{ matrix.abi }}/ppsspp_libretro_android.so
+          if-no-files-found: error
+
+  swanstation:
+    name: swanstation_libretro (${{ matrix.abi }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        abi: [arm64-v8a, x86_64]
+    steps:
+      - name: Checkout SwanStation (pinned SHA — upstream has no tags)
+        uses: actions/checkout@v4
+        with:
+          repository: libretro/swanstation
+          ref: ${{ env.SWANSTATION_REF }}
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Setup NDK r28c
+        id: ndk
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r28c
+          add-to-path: false
+
+      # Mirrors the libretro buildbot invocation (android-cmake.yml template with SwanStation's
+      # API_LEVEL=24 override), plus our explicit 16KB page-size flag. All deps are vendored in
+      # dep/ — no external fetches. Release builds enable LTO, so the link step is slow.
+      - name: Configure (libretro, ${{ matrix.abi }})
+        run: |
+          cmake -B build-${{ matrix.abi }} \
+            -DCMAKE_TOOLCHAIN_FILE=${{ steps.ndk.outputs.ndk-path }}/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=${{ matrix.abi }} \
+            -DANDROID_PLATFORM=android-24 \
+            -DANDROID_STL=c++_static \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-z,max-page-size=16384" \
+            -G Ninja
+
+      - name: Build
+        run: cmake --build build-${{ matrix.abi }} --target swanstation_libretro -j"$(nproc)"
+
+      - name: Locate output
+        id: locate
+        run: |
+          SO=$(find build-${{ matrix.abi }} -name "swanstation_libretro_android.so" | head -n1)
+          if [ -z "$SO" ]; then echo "core .so not found"; exit 1; fi
+          echo "so=$SO" >> "$GITHUB_OUTPUT"
+          ls -la "$SO"
+
+      - name: Gate - 16KB LOAD alignment
+        run: |
+          READELF="${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+          "$READELF" -l "${{ steps.locate.outputs.so }}" | tee readelf.txt
+          BAD=$(awk '/LOAD/ { if ($NF != "0x4000" && $NF != "0x10000") print }' readelf.txt)
+          if [ -n "$BAD" ]; then
+            echo "::error::LOAD segment(s) not 16KB-aligned:"; echo "$BAD"; exit 1
+          fi
+          echo "All LOAD segments 16KB-aligned."
+
+      - name: Stage artifact
+        run: |
+          mkdir -p out/${{ matrix.abi }}
+          cp "${{ steps.locate.outputs.so }}" out/${{ matrix.abi }}/swanstation_libretro_android.so
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: swanstation_libretro-${{ matrix.abi }}-${{ env.SWANSTATION_REF }}
+          path: out/${{ matrix.abi }}/swanstation_libretro_android.so
           if-no-files-found: error
 
   test-cores:

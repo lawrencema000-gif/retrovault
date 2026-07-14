@@ -3,6 +3,7 @@ package com.retrovault.library
 import android.content.Context
 import android.net.Uri
 import android.provider.DocumentsContract
+import com.retrovault.core.model.GameMetadata
 import com.retrovault.core.model.GameSystem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -23,9 +24,27 @@ class LibraryScanner(
 
     private fun systemFor(ext: String): GameSystem? = when {
         ext == "pbp" || ext == "cso" -> GameSystem.PSP
-        ext == "cue" -> GameSystem.PS1
-        ext in psp || ext in ps1 || ext in ps2 -> GameSystem.PSP // refined by content at P23/P25
+        ext == "cue" || ext == "bin" -> GameSystem.PS1   // PSP never ships as .bin/.cue
+        ext in psp || ext in ps1 || ext in ps2 -> GameSystem.PSP // .iso refined by content below
         else -> null
+    }
+
+    /**
+     * Identify with content-based system refinement (P23): a `.iso` is tried as PSP first, and
+     * when that yields no real DISC_ID the PS1 filesystem (SYSTEM.CNF) is probed — so a PS1 iso
+     * dropped in a PSP scan doesn't get misfiled as a fake-id PSP game (and vice versa).
+     */
+    private fun identifyRefined(file: File, hint: GameSystem): GameMetadata? {
+        val ext = file.extension.lowercase()
+        val system = systemFor(ext) ?: hint
+        val first = GameIdentifier.identify(context, file, system)
+        if (first != null && !first.fakeId) return first
+        if (ext == "iso" || ext == "img") {
+            val other = if (system == GameSystem.PSP) GameSystem.PS1 else GameSystem.PSP
+            val second = GameIdentifier.identify(context, file, other)
+            if (second != null && !second.fakeId) return second
+        }
+        return first
     }
 
     /** Scan a local directory of already-extracted games (e.g. the store install root). */
@@ -36,7 +55,7 @@ class LibraryScanner(
             val uri = Uri.fromFile(child).toString()
             val lm = child.lastModified()
             if (index.isCurrent(uri, lm)) return@forEach
-            val meta = GameIdentifier.identify(context, child, system) ?: return@forEach
+            val meta = identifyRefined(child, system) ?: return@forEach
             index.upsert(
                 LibraryEntry(
                     serial = meta.serial,
@@ -94,7 +113,7 @@ class LibraryScanner(
                     context.contentResolver.openInputStream(childUri)?.use { input ->
                         tmp.outputStream().use { input.copyTo(it) }
                     }
-                    val meta = GameIdentifier.identify(context, tmp, system) ?: continue
+                    val meta = identifyRefined(tmp, system) ?: continue
                     index.upsert(
                         LibraryEntry(
                             serial = meta.serial,

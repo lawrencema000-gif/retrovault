@@ -5,13 +5,21 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 /**
- * Minimal ISO9660 reader for locating files inside a PSP disc image (e.g.
- * `PSP_GAME/PARAM.SFO`, `PSP_GAME/ICON0.PNG`). Plain 2048-byte-sector ISO only.
+ * Minimal ISO9660 reader for locating files inside a disc image (e.g. PSP `PSP_GAME/PARAM.SFO`,
+ * PS1 `SYSTEM.CNF`). Physical layout (plain 2048 vs raw 2352 CD sectors) is abstracted behind
+ * [DiscSectorSource]; the [RandomAccessFile] constructor keeps the original plain-2048 behavior
+ * for PSP callers.
  *
  * NOTE: CSO/CHD compressed images are decompressed on the native side (libchdr, added with
- * the core pass-through); this reader handles decompressed/plain `.iso`.
+ * the core pass-through); this reader handles uncompressed images.
  */
-class IsoReader(private val raf: RandomAccessFile) {
+class IsoReader private constructor(
+    private val raf: RandomAccessFile?,
+    private val source: DiscSectorSource?,
+) {
+
+    constructor(raf: RandomAccessFile) : this(raf, null)
+    constructor(source: DiscSectorSource) : this(null, source)
 
     companion object {
         private const val SECTOR = 2048
@@ -73,11 +81,18 @@ class IsoReader(private val raf: RandomAccessFile) {
 
     private fun readExtent(lba: Long, size: Int): ByteArray? {
         if (lba < 0 || size <= 0 || size > 64 * 1024 * 1024) return null
+        source?.let { src ->
+            val sectors = (size + SECTOR - 1) / SECTOR
+            val data = src.read(lba, sectors) ?: return null
+            if (data.size < size) return null
+            return if (data.size == size) data else data.copyOf(size)
+        }
+        val r = raf ?: return null
         val start = lba * SECTOR
-        if (start + size > raf.length()) return null
-        raf.seek(start)
+        if (start + size > r.length()) return null
+        r.seek(start)
         val buf = ByteArray(size)
-        raf.readFully(buf)
+        r.readFully(buf)
         return buf
     }
 }

@@ -18,8 +18,9 @@ import java.util.zip.CRC32
 object GameIdentifier {
 
     fun identify(context: Context, file: File, system: GameSystem): GameMetadata? {
+        if (system == GameSystem.PS1) return identifyPs1(context, file)
         if (system != GameSystem.PSP) {
-            // PS1/PS2 identification (SYSTEM.CNF) arrives with those systems (P23/P25).
+            // PS2 identification (SYSTEM.CNF BOOT2 + ELF CRC) arrives with that system (P25).
             return fallback(context, file, system, sfo = emptyMap(), icon = null)
         }
 
@@ -45,6 +46,38 @@ object GameIdentifier {
         }
 
         return fallback(context, target, system, sfo, icon)
+    }
+
+    /**
+     * PS1 (P23): the serial comes from SYSTEM.CNF's BOOT line at the ISO9660 root of the data
+     * track. `.cue` resolves to its first data-track `.bin` (raw 2352-byte sectors handled by
+     * [DiscSectorSource]); a disc with only PSX.EXE (homebrew/unlicensed) gets a stable fake id.
+     * PS1 discs carry no embedded title/art — the display title is the file name (GameDB
+     * enrichment lands with the SwanStation gamedb import).
+     */
+    private fun identifyPs1(context: Context, file: File): GameMetadata? {
+        val discFile = when (file.extension.lowercase()) {
+            "cue" -> CueSheet.firstDataTrack(file)?.binFile ?: return null
+            "bin", "iso", "img" -> file
+            else -> return null // .chd/.pbp PS1 identify arrives with the core pass-through
+        }
+        val source = DiscSectorSource.open(discFile) ?: return null
+        return source.use { src ->
+            val iso = IsoReader(src)
+            val cnf = iso.readFile("SYSTEM.CNF")?.toString(Charsets.US_ASCII)
+            val serial = cnf?.let { Ps1Serial.fromSystemCnf(it) }
+            val bootable = serial != null || iso.readFile("PSX.EXE") != null || cnf != null
+            if (!bootable) return@use null // not a PS1 disc filesystem at all
+            GameMetadata(
+                serial = serial ?: Serial.fakeId(file.name),
+                title = file.nameWithoutExtension,
+                discVersion = null,
+                iconPath = null,
+                bootCrc = bootCrc(discFile),
+                fakeId = serial == null,
+                system = GameSystem.PS1,
+            )
+        }
     }
 
     private fun fallback(

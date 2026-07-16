@@ -5,6 +5,19 @@
 > **📍 CURRENT STEP → P5: First light on the user's physical device [DEVICE SESSION — everything is staged]**
 > **   (ALL code steps P6–P17 + P19–P24 + P27 done on the emulator; P18 + P25–P26 are device-gated.)**
 >
+> ✅ **ADS DROPPED — Gold-only monetization (2026-07-17, user decision):** resolved the P22 audit's
+> GPL flag (AdMob/UMP linked into the same APK as the GPL PPSSPP core has no exception in the
+> core's grant). AdMob + UMP removed entirely from the `full` flavor (AdBanner/AdsInit twins,
+> manifest APPLICATION_ID, catalog entries); Play Billing (Gold) stays; GoldFeature.NO_ADS
+> retired; PRIVACY/NOTICE/DISTRIBUTION/MASTERPLAN amended ("no advertising SDKs in any build").
+> **New permanent gates `:app:verifyFull{Debug,Release}RuntimeClasspath`** ban UMP as a group and
+> gms `play-services-ads*` by module prefix — full CAN'T ban all of gms because **Play Billing
+> itself transitively pulls play-services-base/tasks/location** (the gate's first run caught
+> exactly that). All four gates + both flavors build green; merged full manifest has zero ad
+> references, BILLING permission intact; suite re-run green. `docs/LAUNCH_CHECKLIST.md` added —
+> every remaining user-side step (device session, Play Console, RA approval clock, Sentry,
+> signing, F-Droid, BG3 provenance). No AdMob account needed anymore.
+>
 > ✅ **P27 done (2026-07-16, code half — commit d739e95):** Skins, widgets, netplay verdict.
 > **`.pulsarskin` v1**: zip (skin.json) with normalized control positions/scales/visibility,
 > global opacity, and **custom buttons** — multi-button combos in three modes (press / toggle
@@ -459,7 +472,7 @@ Legend: done ✅ · foundation laid 🧱 (structure/UI done; functional bits in 
 | 6 | **Accounts + cloud saves** — GoTrue auth client + `:data-saves` (store + sync) + Save-States/Controller screens | 🧱 | client + UI done; sign-in UI + real sync = final pass |
 | 7 | **PS1 core** — SwanStation mapping + user BIOS import | 🧱 | core mapping + BIOS import/status; core `.so` + device = final pass |
 | 8 | **PS2 core** — ARMSX2 mapping, device-capability gate | 🧱 | mapping + RAM/OS gate + BIOS; core `.so` + device = final pass |
-| 9 | **Monetization** — AdMob free tier + "Pulsar Gold" IAP | 🧱 | `:data-billing` (Gold entitlement + facade) + Settings Gold row; AdMob/Play Billing SDKs = final pass |
+| 9 | **Monetization** — "Pulsar Gold" IAP (Gold-only; ads dropped 2026-07-17 for GPL compliance) | 🧱 | `:data-billing` (Gold entitlement + facade) + Settings Gold row; Play Billing live in `full`; Play Console = final pass |
 | 10 | **Distribution** — Google Play + F-Droid + direct APK, dev verification | 🧱 | DISTRIBUTION.md + PRIVACY.md + fastlane metadata; build variants + signing = final pass (needs Play/dev accounts) |
 
 ## Stage 3 breakdown (current)

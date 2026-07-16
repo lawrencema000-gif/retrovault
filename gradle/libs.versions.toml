@@ -20,8 +20,6 @@ securityCrypto = "1.1.0-alpha06"
 glance = "1.1.0"              # Glance app widget (P27, androidx/foss-safe)
 billing = "7.1.1"              # Play Billing v7 (full flavor only)
 sentry = "7.16.0"              # Sentry Android SDK, MIT (full flavor only, opt-in crash reports)
-playServicesAds = "23.6.0"     # AdMob (full flavor only)
-userMessaging = "3.1.0"        # UMP consent (full flavor only)
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -44,8 +42,6 @@ androidx-security-crypto = { group = "androidx.security", name = "security-crypt
 androidx-glance-appwidget = { group = "androidx.glance", name = "glance-appwidget", version.ref = "glance" }
 billing-ktx = { group = "com.android.billingclient", name = "billing-ktx", version.ref = "billing" }
 sentry-android = { group = "io.sentry", name = "sentry-android", version.ref = "sentry" }
-play-services-ads = { group = "com.google.android.gms", name = "play-services-ads", version.ref = "playServicesAds" }
-user-messaging-platform = { group = "com.google.android.ump", name = "user-messaging-platform", version.ref = "userMessaging" }
 androidx-work-runtime = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "work" }
 androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "testExtJunit" }
 androidx-test-runner = { group = "androidx.test", name = "runner", version.ref = "testRunner" }

@@ -45,10 +45,11 @@ work is distributed under GPLv3 with changes stated in the git history of this r
 | OkHttp 4.12.0 + Okio (transitive) | Apache-2.0 |
 | Sentry Android SDK — **`full` flavor only, opt-in, inert without a DSN** | MIT (the SDK; the hosted sentry.io service is proprietary) |
 | Google Play Billing 7.1.1 — **`full` flavor only** | Proprietary (Google Play Billing SDK terms) |
-| Google Mobile Ads (AdMob) 23.6.0 + User Messaging Platform 3.1.0 — **`full` flavor only** | Proprietary (Google Mobile Ads SDK terms) |
 
 The `foss` flavor contains **none** of the proprietary rows — enforced at build time by the
-`:app:verifyFoss*RuntimeClasspath` gates.
+`:app:verifyFoss*RuntimeClasspath` gates. No build of Pulsar contains advertising SDKs
+(AdMob/UMP were removed 2026-07-17 for GPL compliance; the `:app:verifyFull*RuntimeClasspath`
+gates keep them out).
 
 ## Bundled runtime assets
 

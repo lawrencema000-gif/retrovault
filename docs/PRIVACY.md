@@ -34,10 +34,10 @@ Pulsar is an open-source (GPLv3) emulator and a store for legally-distributable 
 
 ## Third parties
 
-- Supabase (auth, catalog, cloud saves), a CDN for legal game files, and — in the ad-supported
-  free tier (Play build only) — Google AdMob with UMP consent, plus Sentry for opt-in crash
-  reports. The F-Droid/GPL build contains no ad, analytics, or crash-reporting SDKs (verified
-  at build time).
+- Supabase (auth, catalog, cloud saves), a CDN for legal game files, and — in the Play build
+  only — Google Play Billing for the optional Gold unlock, plus Sentry for opt-in crash
+  reports. **Pulsar contains no advertising SDKs in any build.** The F-Droid/GPL build contains
+  no billing, analytics, or crash-reporting SDKs either (verified at build time).
 
 ## Contact
 

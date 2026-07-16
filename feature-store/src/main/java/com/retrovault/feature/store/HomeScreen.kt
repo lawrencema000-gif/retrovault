@@ -58,12 +58,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import com.retrovault.billing.Entitlements
 import com.retrovault.core.model.Game
 import com.retrovault.core.model.GameSystem
 import com.retrovault.download.RomImporter
 import com.retrovault.download.RomStorage
-import com.retrovault.feature.store.ads.AdBanner
 import com.retrovault.library.GameIdentifier
 import com.retrovault.library.LibraryEntry
 import com.retrovault.library.LibraryIndex
@@ -355,11 +353,6 @@ fun HomeScreen(
                 }
             }
         }
-
-        // P21: ad banner in the library chrome. Full flavor renders an AdMob banner (hidden for
-        // Gold); foss renders nothing. Never shown in-game (feature-player has no path here).
-        val isGold = remember { Entitlements(context).isGold }
-        AdBanner(isGold = isGold, modifier = Modifier.padding(horizontal = 22.dp, vertical = 12.dp))
     }
 }
 

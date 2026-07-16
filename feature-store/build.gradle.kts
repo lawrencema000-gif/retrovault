@@ -16,7 +16,8 @@ android {
     buildFeatures { compose = true }
 
     // P21 distribution split — carries the dimension so `foss` propagates app -> feature-store ->
-    // data-billing. The full-only AdMob/UMP deps live in fullImplementation; foss AdBanner is empty.
+    // data-billing. full = Play Billing (Gold); foss = neither. Ads were removed entirely
+    // (GPL compliance: the PPSSPP core's GPL grant doesn't allow linking AdMob into the same APK).
     flavorDimensions += "distribution"
     productFlavors {
         create("full") { dimension = "distribution"; isDefault = true }
@@ -45,10 +46,6 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.activity.compose)
     implementation(libs.coil.compose)
-
-    // Proprietary, full-only: AdMob + UMP consent. `foss` gets neither (its AdBanner is empty).
-    "fullImplementation"(libs.play.services.ads)
-    "fullImplementation"(libs.user.messaging.platform)
 
     debugImplementation(libs.androidx.ui.tooling)
 }

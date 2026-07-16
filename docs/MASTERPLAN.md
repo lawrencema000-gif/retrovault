@@ -210,6 +210,10 @@ publish privacy policy + monetization disclosure; apply for RA approval (6-month
 *Accept:* real unlock in softcore + hardcore; hardcore verifiably blocks the banned features.
 
 **P21. Monetization: AdMob + Pulsar Gold (Play Billing) [ACCOUNTS]**
+> **AMENDED 2026-07-17 (user decision):** ads dropped entirely — Gold-only monetization. The P22
+> audit found that linking AdMob/UMP into the same APK as the GPL PPSSPP core has no exception in
+> the core's GPL grant. AdMob/UMP removed from the full flavor; `verifyFull*RuntimeClasspath`
+> gates enforce no-ads permanently. No AdMob account needed anymore.
 Play Billing "Pulsar Gold" (remove ads, extended cloud history, themes; server-verified
 entitlement); AdMob banner/native in library/store chrome ONLY (never in-game, no exit
 interstitials); UMP consent; `foss` flavor with ads+billing stripped (built now to keep GPL

@@ -26,18 +26,21 @@ only legally-distributable games) across channels; the failure mode to engineer 
 
 ## Monetization (see :data-billing)
 
-PPSSPP model: open repo + AdMob free tier + one-time **Pulsar Gold** IAP (+ optional cloud-storage
-subscription). Google Play Billing everywhere except the US external-billing carve-out (Epic v.
-Google, sunsets Nov 1 2027). GPL source is never gated behind payment. F-Droid build is
-donation-only (no proprietary SDKs).
+Gold-only model (decided 2026-07-17): open repo + free tier + one-time **Pulsar Gold** IAP
+(+ optional cloud-storage subscription). **No ads in any build** — bundling AdMob with the GPL
+PPSSPP core in one APK is a GPL-compliance risk, so AdMob/UMP were removed entirely. Google Play
+Billing everywhere except the US external-billing carve-out (Epic v. Google, sunsets Nov 1 2027).
+GPL source is never gated behind payment. F-Droid build is donation-only (no proprietary SDKs).
 
 ## Build variants (P21 — live)
 
 Product-flavor dimension `distribution`, declared in `:app`, `:feature-store`, `:data-billing`:
 
-- `full` — Play/direct: AdMob + Play Billing + UMP consent (proprietary Google deps). `isDefault`.
-- `foss` — F-Droid/GPL: **zero proprietary deps** (Play Billing, play-services-ads, UMP all stripped);
-  Gold unavailable, ads off, free tier fully functional. Enforced by the `:app:verifyFoss*RuntimeClasspath`
+- `full` — Play/direct: Play Billing (Gold) + opt-in Sentry. `isDefault`. **No ads** — the
+  `:app:verifyFull*RuntimeClasspath` gates fail the build if any `com.google.android.gms` /
+  `com.google.android.ump` artifact ever resolves into a full classpath.
+- `foss` — F-Droid/GPL: **zero proprietary deps** (Play Billing also stripped);
+  Gold unavailable, free tier fully functional. Enforced by the `:app:verifyFoss*RuntimeClasspath`
   Gradle gate (wired into `check`), which fails the build if any `com.android.billingclient` /
   `com.google.android.gms` / `com.google.android.ump` artifact leaks into a foss classpath.
 

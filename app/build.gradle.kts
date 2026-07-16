@@ -26,10 +26,11 @@ android {
         buildConfigField("String", "SENTRY_DSN", "\"${System.getenv("SENTRY_DSN") ?: ""}\"")
     }
 
-    // P21 distribution split. `full` = Play Store (Play Billing + AdMob); `foss` = F-Droid/GPL with
-    // ZERO proprietary deps. The dimension is declared here + in :feature-store + :data-billing so
-    // variant-aware resolution picks foss all the way down. Instrumented tests run on fullDebug
-    // (isDefault) via :app:connectedFullDebugAndroidTest.
+    // P21 distribution split. `full` = Play Store (Play Billing "Gold" — NO ads: linking AdMob
+    // into the same APK as the GPL PPSSPP core is a GPL-compliance risk, dropped 2026-07-17);
+    // `foss` = F-Droid/GPL with ZERO proprietary deps. The dimension is declared here +
+    // in :feature-store + :data-billing so variant-aware resolution picks foss all the way down.
+    // Instrumented tests run on fullDebug (isDefault) via :app:connectedFullDebugAndroidTest.
     flavorDimensions += "distribution"
     productFlavors {
         create("full") { dimension = "distribution"; isDefault = true }
@@ -132,18 +133,28 @@ dependencies {
     androidTestImplementation(libs.kotlinx.coroutines.android)
 }
 
-// P21 acceptance gate: the `foss` variant must resolve to ZERO proprietary Google deps (F-Droid/GPL
-// distribution). Resolves the full transitive foss runtime classpaths and fails the build if any
-// billingclient / play-services / UMP artifact leaks in. The AGP variant configurations don't exist
-// until AGP's own afterEvaluate has run, so register in afterEvaluate; the resolved-artifacts
+// P21 acceptance gates. `foss` must resolve to ZERO proprietary Google deps (F-Droid/GPL
+// distribution). `full` may carry Play Billing (Gold) but must NEVER link ads/UMP — bundling
+// AdMob with the GPL PPSSPP core in one APK is a GPL-compliance risk (ads dropped 2026-07-17,
+// this gate keeps them from coming back). Resolves the full transitive runtime classpaths and
+// fails the build on any banned artifact. The AGP variant configurations don't exist until
+// AGP's own afterEvaluate has run, so register in afterEvaluate; the resolved-artifacts
 // Provider is captured there (no Project access in doLast) for configuration-cache safety.
 afterEvaluate {
-    val proprietaryGroups = setOf(
-        "com.android.billingclient",
-        "com.google.android.gms",   // covers play-services-ads*; F-Droid bans this whole group
-        "com.google.android.ump",
+    // foss: the whole gms group is banned (F-Droid policy) along with billing + UMP.
+    // full: Play Billing legitimately pulls gms base/tasks/location transitively, so full bans
+    // UMP as a group but gms only by module prefix (play-services-ads, -ads-lite, -ads-identifier…).
+    val fossGroups = setOf("com.android.billingclient", "com.google.android.gms", "com.google.android.ump")
+    val fullGroups = setOf("com.google.android.ump")
+    val fullGmsAdsPrefix = "play-services-ads"
+    val rulesByConfig = mapOf(
+        "fossDebugRuntimeClasspath" to Pair(fossGroups, false),
+        "fossReleaseRuntimeClasspath" to Pair(fossGroups, false),
+        "fullDebugRuntimeClasspath" to Pair(fullGroups, true),
+        "fullReleaseRuntimeClasspath" to Pair(fullGroups, true),
     )
-    listOf("fossDebugRuntimeClasspath", "fossReleaseRuntimeClasspath").forEach { cfgName ->
+    rulesByConfig.forEach { (cfgName, rule) ->
+        val (bannedGroups, banGmsAds) = rule
         val cfg = configurations.findByName(cfgName) ?: return@forEach
         // Walk the resolved dependency GRAPH (module coordinates), not artifacts — this needs no
         // artifactType and so avoids the android-res/jar/symbol variant-ambiguity of artifact views.
@@ -152,15 +163,18 @@ afterEvaluate {
             doLast {
                 val seen = mutableSetOf<String>()
                 val leaks = mutableListOf<String>()
+                fun banned(group: String, module: String): Boolean =
+                    group in bannedGroups ||
+                        (banGmsAds && group == "com.google.android.gms" && module.startsWith(fullGmsAdsPrefix))
                 fun walk(c: org.gradle.api.artifacts.result.ResolvedComponentResult) {
                     (c.id as? org.gradle.api.artifacts.component.ModuleComponentIdentifier)
-                        ?.takeIf { it.group in proprietaryGroups }
+                        ?.takeIf { banned(it.group, it.module) }
                         ?.let { leaks += "${it.group}:${it.module}:${it.version}" }
                     c.dependencies.filterIsInstance<org.gradle.api.artifacts.result.ResolvedDependencyResult>()
                         .forEach { if (seen.add(it.selected.id.displayName)) walk(it.selected) }
                 }
                 walk(root.get())
-                require(leaks.isEmpty()) { "FOSS variant leaked proprietary deps: $leaks" }
+                require(leaks.isEmpty()) { "$cfgName leaked banned deps: $leaks" }
             }
         }
         tasks.named("check") { dependsOn(verify) }

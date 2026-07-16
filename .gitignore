@@ -52,3 +52,6 @@ core-emulator/src/main/jniLibs/**/*.so
 *.log
 .env
 .env.*
+
+# Kotlin compiler session files
+.kotlin/

@@ -17,6 +17,7 @@ testCore = "1.6.1"
 gamesFramePacing = "2.1.2"
 oboe = "1.9.3"
 securityCrypto = "1.1.0-alpha06"
+glance = "1.1.0"              # Glance app widget (P27, androidx/foss-safe)
 billing = "7.1.1"              # Play Billing v7 (full flavor only)
 sentry = "7.16.0"              # Sentry Android SDK, MIT (full flavor only, opt-in crash reports)
 playServicesAds = "23.6.0"     # AdMob (full flavor only)
@@ -40,6 +41,7 @@ kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 androidx-security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
+androidx-glance-appwidget = { group = "androidx.glance", name = "glance-appwidget", version.ref = "glance" }
 billing-ktx = { group = "com.android.billingclient", name = "billing-ktx", version.ref = "billing" }
 sentry-android = { group = "io.sentry", name = "sentry-android", version.ref = "sentry" }
 play-services-ads = { group = "com.google.android.gms", name = "play-services-ads", version.ref = "playServicesAds" }

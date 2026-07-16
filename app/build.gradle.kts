@@ -117,6 +117,7 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.androidx.navigation.compose)
+    implementation(libs.androidx.glance.appwidget)   // "Continue playing" widget (P27)
 
     // Crash reporting (P22): full flavor only, opt-in, inert without a DSN. The SDK is MIT but
     // reports to the proprietary sentry.io service — foss ships zero crash-reporting code.

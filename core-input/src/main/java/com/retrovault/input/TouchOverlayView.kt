@@ -54,6 +54,49 @@ class TouchOverlayView(
     var stickDeadzone: Float = 0.10f
     var dpadHysteresisDeg: Float = 6f
 
+    // ---- skin (P27): .pulsarskin layout overrides + custom combo/toggle/turbo buttons ----
+    var skin: PulsarSkin? = null
+        set(value) {
+            field = value
+            if (value != null) overlayOpacity = value.opacity
+            rebuildCustomButtons()
+            if (width > 0 && height > 0) layoutControls(width.toFloat(), height.toFloat())
+            invalidate()
+        }
+
+    private class CustomBtn(val def: SkinCustomButton, val mask: Int) {
+        val visual = RectF()
+        var latched = false        // toggle mode
+    }
+
+    private var customBtns: List<CustomBtn> = emptyList()
+    private var turboPhase = true
+    private var turboHeldMask = 0  // masks of turbo buttons currently touched
+    private var latchedMask = 0    // masks latched by toggle buttons
+
+    private fun rebuildCustomButtons() {
+        customBtns = skin?.customButtons.orEmpty().map {
+            CustomBtn(it, PulsarSkin.maskFor(it.buttons))
+        }
+        latchedMask = 0
+        turboHeldMask = 0
+    }
+
+    // ~10 Hz autofire: flip the turbo phase and re-push while any turbo button is held.
+    private val turboTicker = object : Runnable {
+        override fun run() {
+            if (turboHeldMask != 0) {
+                turboPhase = !turboPhase
+                pushMask(lastComputedMask)
+                invalidate()
+                postDelayed(this, 50)
+            } else {
+                turboPhase = true
+            }
+        }
+    }
+    private var lastComputedMask = 0
+
     // ---- controls ----
     private class Button(val mask: Int, val label: String, val round: Boolean, val cluster: Cluster) {
         val visual = RectF()
@@ -129,6 +172,20 @@ class TouchOverlayView(
         layoutControls(w.toFloat(), h.toFloat())
     }
 
+    private fun overrideOf(key: String): SkinControl? = skin?.controls?.get(key)
+
+    private fun visibleControl(key: String): Boolean = overrideOf(key)?.visible ?: true
+
+    /** Re-center a rect on a skin override (normalized cx/cy) and scale it about its center. */
+    private fun applyOverride(rect: RectF, key: String, w: Float, h: Float) {
+        val o = overrideOf(key) ?: return
+        val cw = rect.width() * o.scale
+        val ch = rect.height() * o.scale
+        val cx = o.cx * w
+        val cy = o.cy * h
+        rect.set(cx - cw / 2f, cy - ch / 2f, cx + cw / 2f, cy + ch / 2f)
+    }
+
     /** PSP landscape default: d-pad upper-left, stick lower-left, face right, L/R corners. */
     private fun layoutControls(w: Float, h: Float) {
         val d = min(w, h)
@@ -177,6 +234,46 @@ class TouchOverlayView(
         buttons[6].visual.set(w / 2 - pillW - 8f, h - bottomSafe - pillH, w / 2 - 8f, h - bottomSafe)
         buttons[7].visual.set(w / 2 + 8f, h - bottomSafe - pillH, w / 2 + pillW + 8f, h - bottomSafe)
 
+        // ---- skin overrides (P27): re-position/scale/hide the built-in control groups ----
+        applyOverride(dpadVisual, "dpad", w, h)
+        overrideOf("dpad")?.let {
+            dpadCenterX = dpadVisual.centerX()
+            dpadCenterY = dpadVisual.centerY()
+            dpadRadius = dpadVisual.width() / 2f
+            dpadDeadRadius = dpadRadius * 0.28f
+        }
+        overrideOf("stick")?.let { o ->
+            stickRadius = d * 0.115f * o.scale
+            val cx = o.cx * w
+            val cy = o.cy * h
+            stickZone.set(cx - stickRadius * 1.4f, cy - stickRadius * 1.4f, cx + stickRadius * 1.4f, cy + stickRadius * 1.4f)
+            if (!stickActive) {
+                stickThumbX = stickZone.centerX()
+                stickThumbY = stickZone.centerY()
+            }
+        }
+        overrideOf("face")?.let { o ->
+            val fb = btn * o.scale
+            val cx = o.cx * w
+            val cy = o.cy * h
+            buttons[0].visual.set(cx - fb / 2, cy - fb * 1.5f, cx + fb / 2, cy - fb * 0.5f)
+            buttons[1].visual.set(cx - fb / 2, cy + fb * 0.5f, cx + fb / 2, cy + fb * 1.5f)
+            buttons[2].visual.set(cx - fb * 1.5f, cy - fb / 2, cx - fb * 0.5f, cy + fb / 2)
+            buttons[3].visual.set(cx + fb * 0.5f, cy - fb / 2, cx + fb * 1.5f, cy + fb / 2)
+        }
+        applyOverride(buttons[4].visual, "l", w, h)
+        applyOverride(buttons[5].visual, "r", w, h)
+        applyOverride(buttons[6].visual, "select", w, h)
+        applyOverride(buttons[7].visual, "start", w, h)
+
+        // Custom buttons: base size like a face button, scaled per definition.
+        for (cb in customBtns) {
+            val size = d * 0.135f * cb.def.scale
+            val cx = cb.def.cx * w
+            val cy = cb.def.cy * h
+            cb.visual.set(cx - size / 2, cy - size / 2, cx + size / 2, cy + size / 2)
+        }
+
         textPaint.textSize = d * 0.045f
     }
 
@@ -220,6 +317,16 @@ class TouchOverlayView(
         if (stickyDpad && dpadHit(x, y)) {
             st.role = Role.DPAD
         }
+
+        // Toggle-mode custom buttons latch on the DOWN edge (P27).
+        for (cb in customBtns) {
+            if (cb.def.mode == "toggle" && cb.visual.contains(x, y)) {
+                cb.latched = !cb.latched
+                latchedMask = customBtns.filter { it.latched }.fold(0) { acc, b -> acc or b.mask }
+                haptics?.press()
+                invalidate()
+            }
+        }
     }
 
     private fun onPointerUp(id: Int) {
@@ -236,6 +343,7 @@ class TouchOverlayView(
         var newThumbX = stickZone.centerX()
         var newThumbY = stickZone.centerY()
         var anyStick = false
+        var newTurboHeld = 0
 
         val terminal = event.actionMasked == MotionEvent.ACTION_UP ||
             event.actionMasked == MotionEvent.ACTION_CANCEL
@@ -277,6 +385,16 @@ class TouchOverlayView(
 
                     Role.FREE -> {
                         var contributed = 0
+                        // Custom buttons (P27): press-mode contributes while touched; turbo-mode
+                        // marks its mask held (autofire gating happens in pushMask).
+                        for (cb in customBtns) {
+                            if (cb.visual.contains(x, y)) {
+                                when (cb.def.mode) {
+                                    "press" -> contributed = contributed or cb.mask
+                                    "turbo" -> newTurboHeld = newTurboHeld or cb.mask
+                                }
+                            }
+                        }
                         // d-pad zone (also reachable by slide unless gliding holds a button)
                         if ((!gliding || st.heldMask == 0) && dpadHit(x, y)) {
                             st.dpadMask = classifyDpad(x, y, st.dpadMask)
@@ -310,15 +428,23 @@ class TouchOverlayView(
             newThumbX = stickZone.centerX(); newThumbY = stickZone.centerY()
         }
 
+        // Toggle latches + turbo autofire fold into the pushed mask (P27).
+        val hadTurbo = turboHeldMask != 0
+        turboHeldMask = newTurboHeld
+        if (!hadTurbo && newTurboHeld != 0) postDelayed(turboTicker, 50)
+        mask = mask or latchedMask
+        lastComputedMask = mask
+
         val t = event.eventTime * 1_000_000L
-        if (mask != pressedMask) {
+        val effective = mask or (if (turboPhase) turboHeldMask else 0)
+        if (effective != pressedMask) {
             // edge-triggered haptics
-            val pressedNow = mask and pressedMask.inv()
-            val releasedNow = pressedMask and mask.inv()
+            val pressedNow = effective and pressedMask.inv()
+            val releasedNow = pressedMask and effective.inv()
             if (pressedNow != 0) haptics?.press()
             if (releasedNow != 0) haptics?.release()
-            pressedMask = mask
-            hub.onTouchState(mask, t)
+            pressedMask = effective
+            hub.onTouchState(effective, t)
             invalidate()
         }
         if (newAnalogX != analogX || newAnalogY != analogY) {
@@ -330,6 +456,14 @@ class TouchOverlayView(
             stickThumbX = newThumbX
             stickThumbY = newThumbY
             invalidate()
+        }
+    }
+
+    private fun pushMask(baseMask: Int) {
+        val effective = baseMask or (if (turboPhase) turboHeldMask else 0)
+        if (effective != pressedMask) {
+            pressedMask = effective
+            hub.onTouchState(effective, 0L)
         }
     }
 
@@ -393,9 +527,15 @@ class TouchOverlayView(
         pressedPaint.color = Color.argb((alpha * 0.65f).toInt(), 42, 127, 255)
         textPaint.color = Color.argb(alpha, 142, 163, 200)
 
-        drawDpad(canvas)
-        drawStick(canvas)
-        for (b in buttons) {
+        if (visibleControl("dpad")) drawDpad(canvas)
+        if (visibleControl("stick")) drawStick(canvas)
+        val hiddenKeys = buildSet {
+            if (!visibleControl("face")) add(Cluster.ACTION)
+        }
+        for ((i, b) in buttons.withIndex()) {
+            if (b.cluster in hiddenKeys) continue
+            val visKey = when (i) { 4 -> "l"; 5 -> "r"; 6 -> "select"; 7 -> "start"; else -> null }
+            if (visKey != null && !visibleControl(visKey)) continue
             val pressed = pressedMask and b.mask != 0
             val paint = if (pressed) pressedPaint else fillPaint
             if (b.round) {
@@ -408,6 +548,16 @@ class TouchOverlayView(
             }
             val ty = b.visual.centerY() - (textPaint.descent() + textPaint.ascent()) / 2
             canvas.drawText(b.label, b.visual.centerX(), ty, textPaint)
+        }
+
+        // Custom combo/toggle/turbo buttons (P27): diamond-ish tint when latched/firing.
+        for (cb in customBtns) {
+            val active = cb.latched || (pressedMask and cb.mask) == cb.mask
+            val paint = if (active) pressedPaint else fillPaint
+            canvas.drawRoundRect(cb.visual, 18f, 18f, paint)
+            canvas.drawRoundRect(cb.visual, 18f, 18f, strokePaint)
+            val ty = cb.visual.centerY() - (textPaint.descent() + textPaint.ascent()) / 2
+            canvas.drawText(cb.def.label, cb.visual.centerX(), ty, textPaint)
         }
     }
 
@@ -470,6 +620,46 @@ class TouchOverlayView(
     fun stickCenter(): Pair<Float, Float> = stickZone.centerX() to stickZone.centerY()
     fun dpadCenter(): Pair<Float, Float> = dpadCenterX to dpadCenterY
     fun currentAnalog(): Pair<Int, Int> = analogX to analogY
+
+    /** P27 test hook: the on-screen center of a custom button by label. */
+    fun customButtonCenter(label: String): Pair<Float, Float>? =
+        customBtns.firstOrNull { it.def.label == label }
+            ?.let { it.visual.centerX() to it.visual.centerY() }
+
+    /**
+     * Snapshot the CURRENT layout as a portable skin (P27 export). Positions are normalized to
+     * the view, so importing this on any device reproduces the same layout — the round-trip.
+     */
+    fun currentSkin(name: String = "Exported layout"): PulsarSkin {
+        val w = width.toFloat().coerceAtLeast(1f)
+        val h = height.toFloat().coerceAtLeast(1f)
+        val d = min(w, h)
+        fun of(rect: RectF, baseSize: Float) = SkinControl(
+            cx = rect.centerX() / w, cy = rect.centerY() / h,
+            scale = if (baseSize > 0f) rect.width() / baseSize else 1f,
+        )
+        // Face cluster: reconstruct its center + scale from the △ (top) and ✕ (bottom) buttons.
+        val faceCx = (buttons[2].visual.centerX() + buttons[3].visual.centerX()) / 2f
+        val faceCy = (buttons[0].visual.centerY() + buttons[1].visual.centerY()) / 2f
+        val faceScale = buttons[0].visual.width() / (d * 0.135f)
+        return PulsarSkin(
+            name = name,
+            opacity = overlayOpacity,
+            controls = mapOf(
+                "dpad" to of(dpadVisual, d * 0.34f),
+                "stick" to SkinControl(
+                    cx = stickZone.centerX() / w, cy = stickZone.centerY() / h,
+                    scale = stickRadius / (d * 0.115f),
+                ),
+                "face" to SkinControl(cx = faceCx / w, cy = faceCy / h, scale = faceScale),
+                "l" to of(buttons[4].visual, d * 0.24f),
+                "r" to of(buttons[5].visual, d * 0.24f),
+                "select" to of(buttons[6].visual, d * 0.17f),
+                "start" to of(buttons[7].visual, d * 0.17f),
+            ),
+            customButtons = customBtns.map { it.def },
+        )
+    }
 
     companion object {
         private const val MAX_POINTERS = 16

@@ -56,6 +56,7 @@ class EmulatorActivity : ComponentActivity() {
 
     // Compat reporting context (P13).
     private var gameSerial: String? = null
+    private var playKey: String? = null
     private var sessionStartMs = 0L
     private val appVersion: String by lazy {
         runCatching { packageManager.getPackageInfo(packageName, 0).versionName }
@@ -171,6 +172,39 @@ class EmulatorActivity : ComponentActivity() {
             ?: gamePath?.substringAfterLast('/')?.substringBeforeLast('.')
         if (gameKey != null && gamePath != null) {
             saveStates = SaveStateManager(applicationContext, gameKey)
+        }
+        playKey = gameKey
+
+        // P27: this becomes the "Continue playing" target — record it, refresh the home-screen
+        // widget (broadcast by component name; the widget lives in the app module), and push a
+        // launcher shortcut that resumes via the exported MainActivity trampoline.
+        if (gameKey != null && gamePath != null) {
+            runCatching {
+                com.retrovault.library.RecentPlays(applicationContext)
+                    .recordSession(gameKey, title, system.name, gamePath)
+                val component = android.content.ComponentName(
+                    packageName, "com.retrovault.app.widget.ContinueWidgetReceiver"
+                )
+                val mgr = android.appwidget.AppWidgetManager.getInstance(this)
+                val ids = mgr.getAppWidgetIds(component)
+                if (ids.isNotEmpty()) {
+                    sendBroadcast(Intent(android.appwidget.AppWidgetManager.ACTION_APPWIDGET_UPDATE).apply {
+                        setComponent(component)
+                        putExtra(android.appwidget.AppWidgetManager.EXTRA_APPWIDGET_IDS, ids)
+                    })
+                }
+                val shortcutIntent = Intent(Intent.ACTION_VIEW)
+                    .setClassName(packageName, "com.retrovault.app.MainActivity")
+                    .putExtra("continueLastPlayed", true)
+                val shortcut = androidx.core.content.pm.ShortcutInfoCompat.Builder(this, "continue")
+                    .setShortLabel("Continue $title".take(24))
+                    .setLongLabel("Continue playing $title")
+                    .setIcon(androidx.core.graphics.drawable.IconCompat.createWithResource(
+                        this, android.R.drawable.ic_media_play))
+                    .setIntent(shortcutIntent)
+                    .build()
+                androidx.core.content.pm.ShortcutManagerCompat.pushDynamicShortcut(this, shortcut)
+            }
         }
 
         // Rewind ring: 256MB budget, snapshot every 2s (PSP states ≈ 42MB → ~6 snapshots =
@@ -404,6 +438,13 @@ class EmulatorActivity : ComponentActivity() {
             runBlocking { runCatching { mgr.save(SaveStateManager.AUTO_SLOT) } }
         }
         session.stop()
+        // P27: accumulate playtime for the playtime chip + widget subtitle.
+        playKey?.let { key ->
+            runCatching {
+                com.retrovault.library.RecentPlays(applicationContext)
+                    .addPlaytime(key, System.currentTimeMillis() - sessionStartMs)
+            }
+        }
         super.onDestroy()
     }
 

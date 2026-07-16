@@ -273,6 +273,11 @@ fun GameDetailScreen(
             val hasAutoSave = remember(installed, gameId) {
                 installed && SaveStateManager(context, gameId).isPopulated(SaveStateManager.AUTO_SLOT)
             }
+            // P27: playtime chip data.
+            val playtimeMs = remember(gameId, installedPath) {
+                com.retrovault.library.RecentPlays(context).playtimeMs(game.id)
+            }
+
             val ctaEnabled = installed || (!downloading && game.downloadable)
             val ctaLabel = when {
                 hasAutoSave -> "CONTINUE"
@@ -329,6 +334,15 @@ fun GameDetailScreen(
                         color = if (ctaEnabled) PulsarOnAccent else PulsarTextFaint
                     )
                 }
+            }
+
+            if (playtimeMs > 0) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "You've played this for ${com.retrovault.library.RecentPlays.format(playtimeMs)}",
+                    fontSize = 12.sp, color = PulsarTextDim,
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                )
             }
 
             // action row — real destinations (these were inert decorations; every dead tap

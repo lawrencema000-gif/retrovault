@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">Pulsar</string>
     <string name="tagline">Emulator + legal game store</string>
+    <string name="widget_description">Continue your last game with one tap</string>
 </resources>

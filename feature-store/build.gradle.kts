@@ -34,6 +34,7 @@ dependencies {
     implementation(project(":data-library"))
     implementation(project(":data-cheats"))
     implementation(project(":data-billing"))
+    implementation(project(":core-input"))   // P27: .pulsarskin store + layout export
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)

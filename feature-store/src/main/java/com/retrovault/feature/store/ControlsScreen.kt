@@ -1,6 +1,7 @@
 package com.retrovault.feature.store
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,6 +24,8 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -90,6 +93,9 @@ fun ControlsScreen() {
                 "(SDL controller database) — custom remapping arrives in a later update.",
             fontSize = 12.sp, color = PulsarTextDim
         )
+
+        // ---- Touch skins (P27): portable .pulsarskin layouts with import/export ----
+        SkinSection()
 
         // layout preview
         Spacer(Modifier.height(22.dp))
@@ -181,6 +187,128 @@ private fun BindingRow(binding: Binding) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(binding.mapped, fontSize = 13.sp, color = PulsarTextFaint)
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = PulsarTextFaint, modifier = Modifier.size(18.dp))
+        }
+    }
+}
+
+
+/** P27: choose / import / export `.pulsarskin` touch layouts. */
+@Composable
+private fun SkinSection() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val store = androidx.compose.runtime.remember { com.retrovault.input.SkinStore(context) }
+    var tick by androidx.compose.runtime.remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    var message by androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf<String?>(null)
+    }
+    val active = androidx.compose.runtime.remember(tick) { store.activeSkinName }
+    val installed = androidx.compose.runtime.remember(tick) { store.installed() }
+
+    val importPicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        val tmp = java.io.File(context.cacheDir, "import.pulsarskin")
+        val skin = runCatching {
+            context.contentResolver.openInputStream(uri)!!.use { input ->
+                tmp.outputStream().use { input.copyTo(it) }
+            }
+            com.retrovault.input.PulsarSkin.readFile(tmp)
+        }.getOrNull()
+        tmp.delete()
+        message = if (skin == null) {
+            "That file isn't a valid .pulsarskin."
+        } else {
+            val name = store.install(skin)
+            if (name != null) {
+                store.activeSkinName = name
+                "Imported and activated \"$name\"."
+            } else "Import failed."
+        }
+        tick++
+    }
+
+    val exportPicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/zip")
+    ) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        // Export the ACTIVE skin, or a snapshot of the default layout built offscreen at this
+        // display's size (positions are normalized, so it round-trips across devices).
+        val skin = store.activeSkin() ?: run {
+            val dm = context.resources.displayMetrics
+            val w = maxOf(dm.widthPixels, dm.heightPixels)
+            val h = minOf(dm.widthPixels, dm.heightPixels)
+            val v = com.retrovault.input.TouchOverlayView(context, com.retrovault.input.InputHub(), haptics = null)
+            v.measure(
+                android.view.View.MeasureSpec.makeMeasureSpec(w, android.view.View.MeasureSpec.EXACTLY),
+                android.view.View.MeasureSpec.makeMeasureSpec(h, android.view.View.MeasureSpec.EXACTLY),
+            )
+            v.layout(0, 0, w, h)
+            v.currentSkin("Pulsar default")
+        }
+        val tmp = java.io.File(context.cacheDir, "export.pulsarskin")
+        val ok = com.retrovault.input.PulsarSkin.writeFile(skin, tmp) && runCatching {
+            context.contentResolver.openOutputStream(uri)!!.use { out ->
+                tmp.inputStream().use { it.copyTo(out) }
+            }
+        }.isSuccess
+        tmp.delete()
+        message = if (ok) "Skin exported." else "Export failed."
+        tick++
+    }
+
+    Spacer(Modifier.height(22.dp))
+    Text(
+        "TOUCH SKIN",
+        fontFamily = ChakraPetch, fontWeight = FontWeight.SemiBold,
+        fontSize = 12.sp, letterSpacing = 2.sp, color = PulsarTextDim
+    )
+    Spacer(Modifier.height(10.dp))
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(PulsarSurface1)
+            .border(1.dp, PulsarStrokeSoft, RoundedCornerShape(16.dp))
+    ) {
+        // Active skin cycler: Default -> each installed skin -> Default.
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable {
+                    val cycle = listOf("") + installed
+                    val next = cycle[(cycle.indexOf(active).coerceAtLeast(0) + 1) % cycle.size]
+                    store.activeSkinName = next
+                    tick++
+                }
+                .padding(horizontal = 16.dp, vertical = 15.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text("Active skin", fontSize = 14.sp, color = PulsarText)
+            Text(
+                if (active.isEmpty()) "Default" else active,
+                fontSize = 13.sp, color = PulsarTeal, fontFamily = ChakraPetch
+            )
+        }
+        HorizontalDivider(color = PulsarStrokeSoft, thickness = 1.dp)
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable { importPicker.launch(arrayOf("*/*")) }
+                .padding(horizontal = 16.dp, vertical = 15.dp)
+        ) { Text("Import skin (.pulsarskin)", fontSize = 14.sp, color = PulsarText) }
+        HorizontalDivider(color = PulsarStrokeSoft, thickness = 1.dp)
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable { exportPicker.launch("pulsar-layout.pulsarskin") }
+                .padding(horizontal = 16.dp, vertical = 15.dp)
+        ) { Text("Export current layout", fontSize = 14.sp, color = PulsarText) }
+        message?.let {
+            Text(
+                it, fontSize = 11.sp, color = PulsarTextDim,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
         }
     }
 }

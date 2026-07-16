@@ -183,7 +183,12 @@ fun PlayerScreen(
             // overlay hides; disconnect → it returns).
             if (!gamepadConnected) {
                 AndroidView(
-                    factory = { context -> TouchOverlayView(context, inputHub) },
+                    factory = { context ->
+                        TouchOverlayView(context, inputHub).apply {
+                            // Apply the user's .pulsarskin layout, if one is active (P27).
+                            skin = com.retrovault.input.SkinStore(context).activeSkin()
+                        }
+                    },
                     modifier = Modifier.fillMaxSize()
                 )
             }

@@ -3,7 +3,29 @@
 > **✅ All 10 stages' foundations laid and building green.**
 > **📋 Execution now follows [`MASTERPLAN.md`](MASTERPLAN.md) — 27 steps (P1–P27), one per session.**
 > **📍 CURRENT STEP → P5: First light on the user's physical device [DEVICE SESSION — everything is staged]**
-> **   (code steps P6–P17 + P19–P24 done on the emulator; P18 + P25–P27 remain.)**
+> **   (ALL code steps P6–P17 + P19–P24 + P27 done on the emulator; P18 + P25–P26 are device-gated.)**
+>
+> ✅ **P27 done (2026-07-16, code half — commit d739e95):** Skins, widgets, netplay verdict.
+> **`.pulsarskin` v1**: zip (skin.json) with normalized control positions/scales/visibility,
+> global opacity, and **custom buttons** — multi-button combos in three modes (press / toggle
+> latch / ~10 Hz turbo). `PulsarSkin` (parse/validate/round-trip) + `SkinStore`
+> (install/activate/delete); `TouchOverlayView` applies skins (per-group re-layout from
+> normalized cx/cy, custom-button hit-testing, latched+turbo masks merged into the pushed
+> snapshot) and `currentSkin()` exports the live layout — Controls tab gained import (SAF) /
+> export / active-skin cycler, so the default layout is exportable as a starter skin.
+> **Continue playing**: `RecentPlays` (last game + accumulated playtime) feeds a Glance
+> home-screen widget (one tap → resume straight into the emulator), a dynamic "Continue"
+> launcher shortcut (MainActivity trampoline), and a "You've played this for 3h 24m" chip on
+> the game detail page. **Netplay go/no-go** ([`NETPLAY.md`](NETPLAY.md), 3-agent research
+> workflow adversarially verified against the pinned v1.20.4 source): **GO** on config-level
+> PSP adhoc (~2–4 days: core options already wired to g_Config; needs GET_USERNAME env case,
+> persistent MAC, curated server picker — LAN-first honest scope, IARC "Users Interact" +
+> Data-safety updates before shipping), **NO-GO** frame-sync netplay (libretro FAQ: PSP
+> impossible), **DEFER** infrastructure mode (absent from the port) + the CGNAT relay patch
+> (exposure-only, post-1.0). SkinTest (round-trip + combo/toggle via real MotionEvents on the
+> laid-out overlay) — full suite **OK (67 tests)**. **Deferred to device:** skin feel /
+> drag-to-edit layout editor UI; curated skin gallery needs hosted content (post-1.0);
+> ScreenScraper box-art needs written commercial approval first; PiP optional.
 >
 > ✅ **P24 done (2026-07-14, code half — commits 9788970 + f725034):** PS1 polish. **Right analog
 > end-to-end** (native snapshot → JNI → InputHub → GamepadMapper stick routing → SDL-db rightx/

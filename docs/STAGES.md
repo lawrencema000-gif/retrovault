@@ -5,6 +5,21 @@
 > **📍 CURRENT STEP → P5: First light on the user's physical device [DEVICE SESSION — everything is staged]**
 > **   (ALL code steps P6–P17 + P19–P24 + P27 done on the emulator; P18 + P25–P26 are device-gated.)**
 >
+> ✅ **DEFERRED-POLISH BATCH CLEARED (2026-07-17, commit 432c215 — suite OK 67):** the six debt
+> items recorded since the novice audit are done (Gold feature-gating stays a user product
+> decision). Download CTA shows a live % (worker setProgress, resume-aware totals, remembered
+> status flow = ONE WorkManager subscription per screen); settings changed in the main process
+> now live-apply to a running game (EmulatorActivity.onResume re-resolves → GET_VARIABLE_UPDATE
+> + display config); licenses sheet loads all texts once off-main (per-item state didn't survive
+> LazyColumn recycling); SAF scans probe 16MB first w/ full-copy fallback gated on copy-loop
+> ground truth (COLUMN_SIZE can be null) and skipped for content-blind chd/cso; widget/shortcut
+> launch of a DIFFERENT game while one runs switches cleanly (onNewIntent → process-local intent
+> stash + recreate; relaunch reuses the record's ORIGINAL intent, hence the stash). **Hardening
+> from the 3-lens adversarial review (7 confirmed findings fixed pre-commit): overlapping native
+> sessions — EmulatorSession.start() now WAITS for a live run loop to die (10s) and
+> nativeStartSession refuses to arm over one (starting anyway cancels the old loop's pending
+> stop and wedges the :emu process).**
+>
 > ✅ **ADS DROPPED — Gold-only monetization (2026-07-17, user decision):** resolved the P22 audit's
 > GPL flag (AdMob/UMP linked into the same APK as the GPL PPSSPP core has no exception in the
 > core's grant). AdMob + UMP removed entirely from the `full` flavor (AdBanner/AdsInit twins,

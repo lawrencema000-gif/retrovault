@@ -18,6 +18,11 @@ class LibraryScanner(
     private val context: Context,
     private val index: LibraryIndex,
 ) {
+    private companion object {
+        /** Bounded identify probe: enough for PBP headers + ISO9660 PVD/dirs/SYSTEM.CNF. */
+        const val SCAN_PROBE_BYTES = 16L * 1024 * 1024
+    }
+
     private val psp = setOf("pbp", "iso", "cso", "chd")
     private val ps1 = setOf("chd", "cue", "pbp", "bin", "iso")
     private val ps2 = setOf("iso", "chd")
@@ -45,6 +50,32 @@ class LibraryScanner(
             if (second != null && !second.fakeId) return second
         }
         return first
+    }
+
+    private data class ProbeResult(val meta: GameMetadata?, val hitLimit: Boolean)
+
+    /**
+     * Copy up to [limit] bytes of [uri] into [tmp] (truncating any previous content), then
+     * identify. [ProbeResult.hitLimit] is ground truth from the copy loop itself — whether the
+     * stream still had data at the bound — because SAF providers may report COLUMN_SIZE as
+     * null/0 and the fallback decision must not trust it.
+     */
+    private fun copyAndIdentify(uri: Uri, tmp: File, hint: GameSystem, limit: Long): ProbeResult {
+        var copied = 0L
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            tmp.outputStream().use { out ->
+                val buf = ByteArray(256 * 1024)
+                var remaining = limit
+                while (remaining > 0) {
+                    val n = input.read(buf, 0, minOf(buf.size.toLong(), remaining).toInt())
+                    if (n < 0) break
+                    out.write(buf, 0, n)
+                    copied += n
+                    remaining -= n
+                }
+            }
+        } ?: return ProbeResult(null, hitLimit = false)
+        return ProbeResult(identifyRefined(tmp, hint), hitLimit = copied >= limit)
     }
 
     /** Scan a local directory of already-extracted games (e.g. the store install root). */
@@ -107,13 +138,26 @@ class LibraryScanner(
                 val childUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, childDocId)
                 if (index.isCurrent(childUri.toString(), lm)) continue
 
-                // Identify from a temp copy (headers only; small for PBP, first sectors for ISO).
+                // Identify from a BOUNDED temp copy first — headers and the early filesystem
+                // structures (PBP sections, ISO9660 PVD/root dir, SYSTEM.CNF) live in the first
+                // MBs for every supported format, and copying whole multi-GB discs froze scans
+                // of big folders. If the bounded probe can't produce a real ID and the file is
+                // larger than the probe, fall back to the old full copy so correctness never
+                // regresses (a metadata file that happens to sit late in the image still works).
                 val tmp = File.createTempFile("scan", ".$ext", context.cacheDir)
                 try {
-                    context.contentResolver.openInputStream(childUri)?.use { input ->
-                        tmp.outputStream().use { input.copyTo(it) }
+                    val probe = copyAndIdentify(childUri, tmp, system, SCAN_PROBE_BYTES)
+                    var meta = probe.meta
+                    // Full-copy fallback ONLY when a bigger copy could change the answer:
+                    // chd/cso are content-blind in GameIdentifier (name + first-1MB CRC → always
+                    // fakeId), so re-copying gigabytes for them is a guaranteed no-op; and a
+                    // failed second pass keeps the probe's valid result instead of dropping the
+                    // game (the SAF stream can vanish between opens).
+                    val contentBlind = ext == "chd" || ext == "cso"
+                    if (!contentBlind && (meta == null || meta.fakeId) && probe.hitLimit) {
+                        meta = copyAndIdentify(childUri, tmp, system, Long.MAX_VALUE).meta ?: meta
                     }
-                    val meta = identifyRefined(tmp, system) ?: continue
+                    if (meta == null) continue
                     index.upsert(
                         LibraryEntry(
                             serial = meta.serial,

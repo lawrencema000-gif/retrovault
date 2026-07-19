@@ -57,6 +57,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -646,6 +647,18 @@ private fun LicensesSheet(onDismiss: () -> Unit) {
         "BSD 3-Clause (libchdr, in the CI-built PPSSPP core)" to "legal/bsd-3-clause.txt",
         "zlib License (SDL gamecontrollerdb.txt)" to "legal/zlib.txt",
     )
+    // All texts load once, at the sheet level, OFF the main thread. Per-item loading state
+    // doesn't survive LazyColumn recycling (remember/produceState reset when an item scrolls
+    // out), which caused re-reads + "Loading…" flashes + scroll jumps on every pass.
+    val texts by produceState<Map<String, String>?>(initialValue = null) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            files.associate { (_, path) ->
+                path to runCatching {
+                    context.assets.open(path).bufferedReader().readText()
+                }.getOrElse { "(missing: $path)" }
+            }
+        }
+    }
     androidx.compose.ui.window.Dialog(
         onDismissRequest = onDismiss,
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
@@ -677,18 +690,16 @@ private fun LicensesSheet(onDismiss: () -> Unit) {
             androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxSize()) {
                 files.forEach { (title, path) ->
                     item(key = path) {
-                        val text = remember(path) {
-                            runCatching {
-                                context.assets.open(path).bufferedReader().readText()
-                            }.getOrElse { "(missing: $path)" }
-                        }
                         Text(
                             title,
                             fontFamily = ChakraPetch, fontWeight = FontWeight.SemiBold,
                             fontSize = 13.sp, color = PulsarTeal,
                             modifier = Modifier.padding(top = 18.dp, bottom = 6.dp)
                         )
-                        Text(text, fontSize = 11.sp, lineHeight = 15.sp, color = PulsarTextBody)
+                        Text(
+                            texts?.get(path) ?: "Loading…",
+                            fontSize = 11.sp, lineHeight = 15.sp, color = PulsarTextBody
+                        )
                     }
                 }
             }

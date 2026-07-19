@@ -748,6 +748,14 @@ Java_com_retrovault_emulator_LibretroBridge_nativeStartSession(
         env->ReleaseStringUTFChars(s, c);
         return out;
     };
+    // Refuse to arm a new session while a run loop is alive: resetting g_stopRequested here
+    // would CANCEL the old loop's pending stop and wedge the process (both sessions dead).
+    // Kotlin (EmulatorSession.start) waits for the loop to exit before calling this; the guard
+    // is the last line of defense if any future caller forgets.
+    if (g_running.load()) {
+        LOGE("nativeStartSession refused: previous run loop still alive");
+        return;
+    }
     g_corePath = grab(corePath);
     g_gamePath = grab(gamePath);
     g_systemDir = grab(systemDir);

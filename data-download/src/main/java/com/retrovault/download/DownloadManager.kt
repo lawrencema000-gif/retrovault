@@ -15,6 +15,9 @@ import kotlinx.coroutines.flow.map
 /** UI-facing download status (WorkManager stays encapsulated in this module). */
 enum class DownloadStatus { NONE, DOWNLOADING, FAILED, SUCCEEDED }
 
+/** Status + byte progress (null until the worker knows the content length, and when not RUNNING). */
+data class DownloadState(val status: DownloadStatus, val progressPct: Int? = null)
+
 /** Enqueues resumable game downloads via WorkManager. */
 object DownloadManager {
 
@@ -53,17 +56,22 @@ object DownloadManager {
      * FAILED, which the old poll-the-filesystem approach could never surface. State lives in
      * WorkManager, so it survives leaving and re-entering the screen.
      */
-    fun status(context: Context, gameId: String): Flow<DownloadStatus> =
+    fun status(context: Context, gameId: String): Flow<DownloadState> =
         WorkManager.getInstance(context)
             .getWorkInfosForUniqueWorkFlow("download-$gameId")
             .map { infos ->
-                when (infos.lastOrNull()?.state) {
+                val info = infos.lastOrNull()
+                val status = when (info?.state) {
                     WorkInfo.State.ENQUEUED, WorkInfo.State.RUNNING, WorkInfo.State.BLOCKED ->
                         DownloadStatus.DOWNLOADING
                     WorkInfo.State.FAILED, WorkInfo.State.CANCELLED -> DownloadStatus.FAILED
                     WorkInfo.State.SUCCEEDED -> DownloadStatus.SUCCEEDED
                     null -> DownloadStatus.NONE
                 }
+                val pct = info?.takeIf { it.state == WorkInfo.State.RUNNING }
+                    ?.progress?.getInt(GameDownloadWorker.PROGRESS_PCT, -1)
+                    ?.takeIf { it >= 0 }
+                DownloadState(status, pct)
             }
 
     /** Re-enqueue after a failure (REPLACE so the failed chain doesn't block the retry). */

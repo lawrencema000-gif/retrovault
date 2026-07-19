@@ -44,6 +44,23 @@ class EmulatorSession {
             return
         }
 
+        // The native host is process-global: starting while a previous run loop is still alive
+        // resets its stop flag and wedges BOTH sessions (frozen video, no recovery until the
+        // process dies). stop() joins for only 3s — a slow state serialize or core teardown can
+        // outlive that, and the game-switch relaunch (EmulatorActivity.onNewIntent → recreate)
+        // calls start() immediately after. Wait for the loop to actually die; never overlap.
+        if (LibretroBridge.nativeIsRunning()) {
+            LibretroBridge.nativeRequestStop()
+            val deadline = System.currentTimeMillis() + 10_000
+            while (LibretroBridge.nativeIsRunning() && System.currentTimeMillis() < deadline) {
+                Thread.sleep(50)
+            }
+            if (LibretroBridge.nativeIsRunning()) {
+                status = CoreStatus.ERROR
+                return
+            }
+        }
+
         val corePath = File(context.applicationInfo.nativeLibraryDir, coreFileName)
         if (!corePath.exists()) {
             status = CoreStatus.UNAVAILABLE

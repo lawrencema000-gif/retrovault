@@ -78,6 +78,10 @@ class EmulatorActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // A different-game relaunch (see onNewIntent) parks its intent here — adopt it before
+        // any extra is read.
+        pendingRelaunch?.let { setIntent(it); pendingRelaunch = null }
+
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowCompat.getInsetsController(window, window.decorView).apply {
@@ -427,6 +431,41 @@ class EmulatorActivity : ComponentActivity() {
         session.applyCheats(codes)
     }
 
+    // Cross-process live-apply: the Settings tab runs in the MAIN process and writes the settings
+    // JSON; this (:emu) process read it once at onCreate. Re-resolving on every return makes
+    // "background the game → tweak video settings → come back" take effect immediately — core
+    // variables flow through GET_VARIABLE_UPDATE, the display config is applied per frame.
+    private var settingsAppliedAtCreate = false
+
+    override fun onResume() {
+        super.onResume()
+        if (!settingsAppliedAtCreate) { settingsAppliedAtCreate = true; return } // onCreate just did it
+        if (session.status != CoreStatus.RUNNING) return
+        runCatching {
+            val settings = com.retrovault.settings.SettingsResolver(applicationContext) {
+                com.retrovault.settings.GameDb.settingsFor(applicationContext, gameSerial)
+            }
+            settings.applyToCore(playKey)
+            settings.applyDisplay(playKey)
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // singleTask: a widget/shortcut/store launch while a session runs lands here instead of
+        // onCreate. Same game → just come to the front. Different game → restart through the
+        // normal lifecycle: onDestroy auto-saves + records playtime for the OLD game, then
+        // onCreate boots the new one. recreate() (not finish()+startActivity()) because it
+        // destroys the old instance BEFORE creating the new one — overlapping native sessions
+        // poison the run loop. The relaunch reuses the activity record's ORIGINAL intent
+        // (setIntent only changes the client-side field), so the new intent rides a
+        // process-local stash that onCreate picks up first.
+        val newKey = intent.getStringExtra(EXTRA_GAME_ID) ?: return
+        if (newKey == playKey) return
+        pendingRelaunch = intent
+        recreate()
+    }
+
     override fun onDestroy() {
         hotplug?.stop()
         // Auto-save before teardown: the run loop is still alive (backgrounded branch
@@ -461,6 +500,9 @@ class EmulatorActivity : ComponentActivity() {
         const val EXTRA_RESUME = "resumeAuto"
 
         private const val QUICK_SLOT = 1
+
+        /** Intent for a different-game relaunch via recreate() — see onNewIntent. */
+        private var pendingRelaunch: Intent? = null
 
         fun intent(
             context: Context,

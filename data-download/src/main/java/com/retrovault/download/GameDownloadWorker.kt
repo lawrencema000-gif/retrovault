@@ -42,10 +42,31 @@ class GameDownloadWorker(context: Context, params: WorkerParameters) :
 
             OkHttpClient().newCall(request).execute().use { resp ->
                 if (!resp.isSuccessful) return@withContext Result.retry()
-                val stream = resp.body?.byteStream() ?: return@withContext Result.retry()
+                val body = resp.body ?: return@withContext Result.retry()
                 val append = existing > 0 && resp.code == 206
-                stream.use { input ->
-                    FileOutputStream(dest, append).use { output -> input.copyTo(output) }
+                // Total = what's already on disk (206 resume) + what the server will send.
+                // contentLength() is -1 when unknown → no percentage, UI shows plain DOWNLOADING.
+                val startAt = if (append) existing else 0L
+                val total = if (body.contentLength() >= 0) startAt + body.contentLength() else -1L
+                body.byteStream().use { input ->
+                    FileOutputStream(dest, append).use { output ->
+                        val buf = ByteArray(256 * 1024)
+                        var written = startAt
+                        var lastPct = -1
+                        while (true) {
+                            val n = input.read(buf)
+                            if (n < 0) break
+                            output.write(buf, 0, n)
+                            written += n
+                            if (total > 0) {
+                                val pct = ((written * 100) / total).toInt().coerceIn(0, 100)
+                                if (pct != lastPct) {
+                                    lastPct = pct
+                                    setProgress(Data.Builder().putInt(PROGRESS_PCT, pct).build())
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -71,6 +92,7 @@ class GameDownloadWorker(context: Context, params: WorkerParameters) :
         const val KEY_SLUG = "slug"
         const val KEY_SYSTEM = "system"
         const val OUT_PLAYABLE_PATH = "playablePath"
+        const val PROGRESS_PCT = "progressPct"
         const val MAX_ATTEMPTS = 4
     }
 }

@@ -137,8 +137,13 @@ fun GameDetailScreen(
     }
     // Real download state from WorkManager — survives leaving the screen and can say FAILED
     // (the old remembered-bool + filesystem poll could do neither).
-    val downloadStatus by DownloadManager.status(context, game.id)
-        .collectAsState(initial = DownloadStatus.NONE)
+    // remember the flow: a fresh instance per recomposition would restart collectAsState's
+    // collector each time — with per-percent progress ticks that would tear down and rebuild
+    // the WorkManager Room subscription ~100× per download.
+    val statusFlow = remember(game.id) { DownloadManager.status(context, game.id) }
+    val downloadState by statusFlow
+        .collectAsState(initial = com.retrovault.download.DownloadState(DownloadStatus.NONE))
+    val downloadStatus = downloadState.status
     val downloading = downloadStatus == DownloadStatus.DOWNLOADING && installedPath == null
     val downloadFailed = downloadStatus == DownloadStatus.FAILED && installedPath == null
     LaunchedEffect(downloadStatus) {
@@ -282,7 +287,7 @@ fun GameDetailScreen(
             val ctaLabel = when {
                 hasAutoSave -> "CONTINUE"
                 installed -> "PLAY"
-                downloading -> "DOWNLOADING…"
+                downloading -> downloadState.progressPct?.let { "DOWNLOADING… $it%" } ?: "DOWNLOADING…"
                 downloadFailed -> "DOWNLOAD FAILED — RETRY"
                 game.downloadable -> "DOWNLOAD"
                 else -> "COMING SOON"

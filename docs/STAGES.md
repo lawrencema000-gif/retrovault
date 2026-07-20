@@ -5,6 +5,23 @@
 > **📍 CURRENT STEP → P5: First light on the user's physical device [DEVICE SESSION — everything is staged]**
 > **   (ALL code steps P6–P17 + P19–P24 + P27 done on the emulator; P18 + P25–P26 are device-gated.)**
 >
+> ✅ **ADHOC MULTIPLAYER v1 (2026-07-17, commit 26b537e — suite OK 71):** the NETPLAY.md GO
+> verdict implemented, staged behind the default-off "Multiplayer networking (beta)" toggle.
+> Native GET_USERNAME env case + nativeSetUsername (nickname rides the LAUNCH INTENT — the
+> :emu process's AppPrefs snapshot goes stale in a cached process; pushed unconditionally so
+> blank CLEARS g_username, which no per-session reset touches). Persistent MAC (`AdhocMac`,
+> locally-administered unicast) pushed as ppsspp_change_mac_address01..12 — **keys built with
+> ASCII padStart, NEVER "%02d".format (locale-localized digits silently no-op the whole
+> mechanism; truth-table test pins the literal key under ar-EG)**. MULTIPLAYER settings
+> category (WLAN/curated server picker/host-on-LAN/UPnP) flows through the existing
+> applyToCore pipeline; extras rows = nickname editor, custom-host editor (blank clears; the
+> core's magic "IP address" preset literal refused; custom value cycles to the EDITOR, not
+> destroyed), live wlan-site-local device-IP + MAC helper. 13 review findings fixed pre-commit.
+> NetplayTest (4): key truth table, MAC persistence, nickname round-trip, BG3 renders 120
+> frames with WLAN + built-in adhoc server live on the AVD. **Before PUBLIC enablement:**
+> two-device LAN session [DEVICE], IARC "Users Interact" re-rating + Data-safety updates
+> (LAUNCH_CHECKLIST), troubleshooting page.
+>
 > ✅ **DEFERRED-POLISH BATCH CLEARED (2026-07-17, commit 432c215 — suite OK 67):** the six debt
 > items recorded since the novice audit are done (Gold feature-gating stays a user product
 > decision). Download CTA shows a live % (worker setProgress, resume-aware totals, remembered

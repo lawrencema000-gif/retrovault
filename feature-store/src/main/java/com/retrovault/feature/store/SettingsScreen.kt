@@ -49,6 +49,7 @@ import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -56,9 +57,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -80,6 +90,7 @@ import com.retrovault.billing.createBillingManager
 import com.retrovault.settings.Category
 import com.retrovault.settings.DeviceClass
 import com.retrovault.settings.Origin
+import com.retrovault.settings.PspSettings
 import com.retrovault.settings.ResolvedSetting
 import com.retrovault.settings.SettingDef
 import com.retrovault.settings.SettingsResolver
@@ -247,12 +258,21 @@ fun SettingsScreen(gameKey: String? = null, gameTitle: String? = null) {
             }
         }
 
+        // Multiplayer prefs are global (identity + meeting server) — hidden in per-game mode.
+        // serverEditTick lets the ADHOC_SERVER choice row open the custom-host editor instead of
+        // silently cycling a custom hostname away.
+        var serverEditTick by remember { mutableIntStateOf(0) }
+        val extrasSearchText = "nickname custom server address device ip mac"
         for (category in listOf(
-            Category.VIDEO, Category.AUDIO, Category.EMULATION, Category.CONTROLS, Category.SYSTEM
+            Category.VIDEO, Category.AUDIO, Category.EMULATION, Category.CONTROLS,
+            Category.MULTIPLAYER, Category.SYSTEM
         )) {
+            if (category == Category.MULTIPLAYER && gameKey != null) continue
             val rows = visible.filter { it.def.category == category }
-            if (rows.isEmpty()) continue
-            Section(category.name) {
+            val showExtras = category == Category.MULTIPLAYER &&
+                (query.isBlank() || extrasSearchText.contains(query.trim().lowercase()))
+            if (rows.isEmpty() && !showExtras) continue
+            Section(if (category == Category.MULTIPLAYER) "MULTIPLAYER (BETA)" else category.name) {
                 rows.forEachIndexed { i, r ->
                     if (i > 0) Divider()
                     when (val def = r.def) {
@@ -264,12 +284,25 @@ fun SettingsScreen(gameKey: String? = null, gameTitle: String? = null) {
                             r, def,
                             onCycle = {
                                 val idx = def.options.indexOfFirst { it.first == r.value }
-                                val next = def.options[(idx + 1).mod(def.options.size)].first
-                                setValue(r, next)
+                                if (def.key == PspSettings.ADHOC_SERVER.key && idx < 0) {
+                                    serverEditTick++ // custom host active — edit, don't destroy
+                                } else {
+                                    val next = def.options[(idx + 1).mod(def.options.size)].first
+                                    setValue(r, next)
+                                }
                             },
                             onReset = { reset(r) },
                         )
                     }
+                }
+                if (category == Category.MULTIPLAYER) {
+                    if (rows.isNotEmpty()) Divider()
+                    MultiplayerExtras(
+                        serverRow = resolved.firstOrNull { it.def.key == PspSettings.ADHOC_SERVER.key },
+                        onSetServer = { row, host -> setValue(row, host) },
+                        onResetServer = { row -> reset(row) },
+                        openServerEditorTick = serverEditTick,
+                    )
                 }
             }
         }
@@ -574,6 +607,190 @@ private fun Section(title: String, content: @Composable () -> Unit) {
 
 @Composable
 private fun Divider() = HorizontalDivider(color = PulsarStrokeSoft, thickness = 1.dp)
+
+/**
+ * Multiplayer rows that aren't SettingDefs: the nickname (served to the core via GET_USERNAME),
+ * a free-text custom server (any hostname passes verbatim through the
+ * `ppsspp_change_pro_ad_hoc_server_address` option), and this device's identity for host mode.
+ */
+@Composable
+private fun MultiplayerExtras(
+    serverRow: ResolvedSetting?,
+    onSetServer: (ResolvedSetting, String) -> Unit,
+    onResetServer: (ResolvedSetting) -> Unit,
+    openServerEditorTick: Int,
+) {
+    val context = LocalContext.current
+    var nickTick by remember { mutableIntStateOf(0) }
+    val nickname = remember(nickTick) { com.retrovault.core.ui.AppPrefs.nickname }
+    var editNickname by rememberSaveable { mutableStateOf(false) }
+    var editServer by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(openServerEditorTick) { if (openServerEditorTick > 0) editServer = true }
+
+    ExtraTextRow(
+        title = "Nickname",
+        value = nickname.ifBlank { "Not set" },
+        onClick = { editNickname = true },
+    )
+    Divider()
+    ExtraTextRow(
+        title = "Custom server address",
+        value = serverRow?.value
+            ?.takeIf { v -> PspSettings.ADHOC_SERVER.options.none { it.first == v } }
+            ?: "Not set",
+        onClick = { editServer = true },
+    )
+    Divider()
+    // Live Wi-Fi address: refreshed on network changes (a once-remembered value went stale the
+    // moment the user toggled Wi-Fi, and an active-network read could show a cellular/VPN
+    // address that no other device can dial).
+    var ip by remember { mutableStateOf(localWifiIp()) }
+    DisposableEffect(Unit) {
+        val cm = context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE)
+            as android.net.ConnectivityManager
+        val cb = object : android.net.ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(n: android.net.Network) { ip = localWifiIp() }
+            override fun onLost(n: android.net.Network) { ip = localWifiIp() }
+            override fun onLinkPropertiesChanged(n: android.net.Network, lp: android.net.LinkProperties) {
+                ip = localWifiIp()
+            }
+        }
+        runCatching { cm.registerDefaultNetworkCallback(cb) }
+        onDispose { runCatching { cm.unregisterNetworkCallback(cb) } }
+    }
+    Text(
+        "This device: ${ip ?: "no Wi-Fi address"} · MAC ${com.retrovault.settings.AdhocMac.formatted(context)}\n" +
+            "Hosting on this device? The other device enters the address above as its custom server.",
+        fontSize = 11.sp, lineHeight = 15.sp, color = PulsarTextFaint,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+    )
+
+    if (editNickname) {
+        TextEditDialog(
+            title = "Nickname",
+            initial = nickname,
+            hint = "Shown to other players",
+            onDone = {
+                com.retrovault.core.ui.AppPrefs.setNickname(it)
+                nickTick++
+                editNickname = false
+            },
+            onDismiss = { editNickname = false },
+        )
+    }
+    if (editServer && serverRow != null) {
+        TextEditDialog(
+            title = "Custom server address",
+            initial = serverRow.value
+                .takeIf { v -> PspSettings.ADHOC_SERVER.options.none { it.first == v } } ?: "",
+            hint = "Hostname or IP (e.g. 192.168.1.20)",
+            keyboardType = KeyboardType.Uri,
+            onDone = { host ->
+                val h = host.trim()
+                // Blank clears back to the curated default. The literal "IP address" is the
+                // core's magic preset name (switches it to a 12-digit-option mechanism we don't
+                // use) — treat it as a clear rather than passing the trap through.
+                if (h.isEmpty() || h.equals("IP address", ignoreCase = true)) {
+                    onResetServer(serverRow)
+                } else {
+                    onSetServer(serverRow, h)
+                }
+                editServer = false
+            },
+            onDismiss = { editServer = false },
+        )
+    }
+}
+
+@Composable
+private fun ExtraTextRow(title: String, value: String, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(title, fontSize = 13.sp, color = PulsarText)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                value, fontSize = 12.sp, color = PulsarTeal, fontFamily = ChakraPetch,
+                textAlign = androidx.compose.ui.text.style.TextAlign.End,
+            )
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight, null,
+                tint = PulsarTextDim, modifier = Modifier.size(18.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun TextEditDialog(
+    title: String,
+    initial: String,
+    hint: String,
+    onDone: (String) -> Unit,
+    onDismiss: () -> Unit,
+    keyboardType: KeyboardType = KeyboardType.Text,
+) {
+    var text by rememberSaveable { mutableStateOf(initial) }
+    val focusRequester = remember { FocusRequester() }
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .background(PulsarSurface1)
+                .padding(20.dp)
+        ) {
+            Text(
+                title, fontFamily = ChakraPetch, fontWeight = FontWeight.Bold,
+                fontSize = 16.sp, color = PulsarText
+            )
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                placeholder = { Text(hint, fontSize = 13.sp, color = PulsarTextFaint) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { onDone(text) }),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(focusRequester),
+            )
+            LaunchedEffect(Unit) { focusRequester.requestFocus() }
+            Spacer(Modifier.height(14.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                Text(
+                    "Cancel", fontSize = 14.sp, color = PulsarTextDim,
+                    modifier = Modifier.clickable(onClick = onDismiss).padding(8.dp)
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    "Save", fontSize = 14.sp, color = PulsarPrimary,
+                    modifier = Modifier.clickable { onDone(text) }.padding(8.dp)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Device IPv4 for same-Wi-Fi host mode — what the other player types as the custom server.
+ * Prefers a site-local address on a wlan interface; an active-network read could hand back a
+ * cellular/VPN address no LAN device can reach, so those never qualify.
+ */
+private fun localWifiIp(): String? = runCatching {
+    java.net.NetworkInterface.getNetworkInterfaces().toList()
+        .filter { it.isUp && !it.isLoopback }
+        .sortedBy { if (it.name.startsWith("wlan")) 0 else 1 }
+        .flatMap { it.inetAddresses.toList() }
+        .filterIsInstance<java.net.Inet4Address>()
+        .firstOrNull { it.isSiteLocalAddress }
+        ?.hostAddress
+}.getOrNull()
 
 @Composable
 private fun RowIcon(icon: ImageVector, tint: Color, label: String, modifier: Modifier = Modifier) {

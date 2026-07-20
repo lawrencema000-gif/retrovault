@@ -1,5 +1,16 @@
 # Netplay / Multiplayer — Go/No-Go (P27 evaluation)
 
+> **STATUS UPDATE (2026-07-17): v1 IMPLEMENTED** per the scope below, staged behind the
+> default-off "Multiplayer networking (beta)" toggle. Shipped: MULTIPLAYER settings section
+> (WLAN toggle / curated server picker + free-text custom host / host-on-LAN / UPnP), nickname
+> via a new GET_USERNAME env case, persistent locally-administered MAC pushed as the 12 digit
+> options, device-IP helper row, connection-drop warnings (settings copy + in-game toast).
+> NetplayTest proves the keys against the verified table, MAC persistence, the nickname
+> round-trip, and a real game booting/rendering with WLAN + built-in adhoc server enabled.
+> Remaining before PUBLIC enablement: two-device same-Wi-Fi session (device work), the IARC
+> "Users Interact" re-rating + Data-safety/privacy updates (docs/LAUNCH_CHECKLIST.md), and an
+> in-app troubleshooting page.
+
 Decision date: 2026-07-14. Every claim below was verified against primary sources at the exact
 pinned core versions (PPSSPP `v1.20.4` = `fa50bb19`, per `.github/workflows/build-cores.yml`) by
 downloading and grepping the core source — not summarized from docs.

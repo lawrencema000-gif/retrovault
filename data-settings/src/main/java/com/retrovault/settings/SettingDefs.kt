@@ -3,7 +3,7 @@ package com.retrovault.settings
 /** Which layer supplied a resolved value — surfaced as a badge in the settings UI. */
 enum class Origin { DEFAULT, GAMEDB, DEVICE, USER_GLOBAL, USER_GAME }
 
-enum class Category { VIDEO, AUDIO, EMULATION, CONTROLS, SYSTEM }
+enum class Category { VIDEO, AUDIO, EMULATION, CONTROLS, MULTIPLAYER, SYSTEM }
 
 /**
  * A typed setting. Values are stored as strings across all layers (JSON-friendly, diffable);

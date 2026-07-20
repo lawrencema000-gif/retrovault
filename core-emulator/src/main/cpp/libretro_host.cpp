@@ -128,6 +128,11 @@ std::atomic<int64_t> g_inputEventsSampled{0};
 // storage that lives for the process (entries are only ever replaced, keys never erased).
 std::mutex g_varsMutex;
 std::map<std::string, std::string> g_coreVars;
+
+// Player nickname served via RETRO_ENVIRONMENT_GET_USERNAME (adhoc multiplayer, NETPLAY.md):
+// PPSSPP queries it once at load for g_Config.sNickName. Written from Kotlin BEFORE session
+// start; guarded by g_varsMutex so the env callback never reads a half-written string.
+std::string g_username;
 std::atomic<bool> g_varsDirty{false};
 
 // Controller device type (P24): PS1 pad selection (digital vs DualShock) via
@@ -300,6 +305,16 @@ bool env_cb(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_GET_LANGUAGE:
             *(unsigned*)data = RETRO_LANGUAGE_ENGLISH;
             return true;
+
+        case RETRO_ENVIRONMENT_GET_USERNAME: {
+            // PPSSPP → g_Config.sNickName (shown to other adhoc players). Unset → false so the
+            // core keeps its own default. The string must outlive the call: g_username is only
+            // written before session start, never mid-session.
+            std::lock_guard<std::mutex> lk(g_varsMutex);
+            if (g_username.empty()) return false;
+            *(const char**)data = g_username.c_str();
+            return true;
+        }
 
         case RETRO_ENVIRONMENT_SET_GEOMETRY: {
             auto* geo = (const retro_game_geometry*)data;
@@ -1193,6 +1208,22 @@ Java_com_retrovault_emulator_LibretroBridge_nativeGetCoreVariable(JNIEnv* env, j
     }
     env->ReleaseStringUTFChars(key, k);
     return found ? env->NewStringUTF(out.c_str()) : nullptr;
+}
+
+JNIEXPORT void JNICALL
+Java_com_retrovault_emulator_LibretroBridge_nativeSetUsername(JNIEnv* env, jobject, jstring name) {
+    const char* n = name ? env->GetStringUTFChars(name, nullptr) : nullptr;
+    {
+        std::lock_guard<std::mutex> lk(g_varsMutex);
+        g_username = n ? n : "";
+    }
+    if (n) env->ReleaseStringUTFChars(name, n);
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_retrovault_emulator_LibretroBridge_nativeGetUsername(JNIEnv* env, jobject) {
+    std::lock_guard<std::mutex> lk(g_varsMutex);
+    return env->NewStringUTF(g_username.c_str());
 }
 
 JNIEXPORT jboolean JNICALL

@@ -20,6 +20,7 @@ object AppPrefs {
     private const val KEY_LANG = "language_tag"
     private const val KEY_CRASH_OPT_IN = "crash_reports_opt_in"
     private const val KEY_GAMES_FOLDER = "games_folder_uri"
+    private const val KEY_NICKNAME = "adhoc_nickname"
 
     private var prefs: android.content.SharedPreferences? = null
 
@@ -28,6 +29,7 @@ object AppPrefs {
     private var languageTagState by mutableStateOf("")
     private var crashReportsOptInState by mutableStateOf(false)
     private var gamesFolderUriState by mutableStateOf("")
+    private var nicknameState by mutableStateOf("")
 
     val onboardingSeen: Boolean get() = onboardingSeenState
     val oledBlack: Boolean get() = oledBlackState
@@ -41,6 +43,9 @@ object AppPrefs {
     /** SAF tree URI of the user's games folder (onboarding pick), or "" if never chosen. */
     val gamesFolderUri: String get() = gamesFolderUriState
 
+    /** Multiplayer nickname shown to other adhoc players, or "" for the core's default. */
+    val nickname: String get() = nicknameState
+
     fun init(context: Context) {
         val p = context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
         prefs = p
@@ -49,6 +54,7 @@ object AppPrefs {
         languageTagState = p.getString(KEY_LANG, "") ?: ""
         crashReportsOptInState = p.getBoolean(KEY_CRASH_OPT_IN, false)
         gamesFolderUriState = p.getString(KEY_GAMES_FOLDER, "") ?: ""
+        nicknameState = p.getString(KEY_NICKNAME, "") ?: ""
     }
 
     fun setOnboardingSeen(value: Boolean) {
@@ -74,5 +80,17 @@ object AppPrefs {
     fun setGamesFolderUri(uri: String) {
         gamesFolderUriState = uri
         prefs?.edit()?.putString(KEY_GAMES_FOLDER, uri)?.apply()
+    }
+
+    fun setNickname(name: String) {
+        // Cap without splitting a surrogate pair (an emoji at the boundary would otherwise
+        // produce a lone surrogate that mangles across JNI). PPSSPP caps sNickName similarly.
+        val t = name.trim()
+        nicknameState = when {
+            t.length <= 28 -> t
+            Character.isHighSurrogate(t[27]) -> t.substring(0, 27)
+            else -> t.substring(0, 28)
+        }
+        prefs?.edit()?.putString(KEY_NICKNAME, nicknameState)?.apply()
     }
 }

@@ -193,12 +193,69 @@ object PspSettings {
         coreVariable = null,
     )
 
+    // ---- adhoc multiplayer (NETPLAY.md v1, verified against PPSSPP v1.20.4 core options) ----
+    // Default OFF, matching the core ("Enable Networking/WLAN (Beta, may break games)").
+    // The MAC digits (ppsspp_change_mac_address01..12) and the nickname (GET_USERNAME) are
+    // pushed by EmulatorActivity, not defs — they're identity, not preferences.
+
+    val ENABLE_WLAN = SettingDef.Toggle(
+        key = "psp.net.enable_wlan",
+        title = "Multiplayer networking (beta)",
+        description = "Emulates the PSP's adhoc Wi-Fi so games can play together. " +
+            "Pausing, fast-forward, or rewind drops live connections.",
+        category = Category.MULTIPLAYER,
+        defaultValue = false,
+        coreVariable = "ppsspp_enable_wlan",
+    )
+
+    // Curated from the ppsspp.org ACTIVE server list (2026) — the core's own preset list still
+    // ships a defunct server, so we pass the hostname through as a value instead. Any custom
+    // hostname stored under this key also passes verbatim (verified: non-preset values are
+    // copied straight into g_Config.sProAdhocServer).
+    val ADHOC_SERVER = SettingDef.Choice(
+        key = "psp.net.adhoc_server",
+        title = "Multiplayer server",
+        description = "Where players meet. Everyone must pick the same server — or the host " +
+            "device's address for same-Wi-Fi play.",
+        category = Category.MULTIPLAYER,
+        options = listOf(
+            "socom.cc" to "socom.cc (Europe)",
+            "psp.mgn.pub" to "psp.mgn.pub (USA)",
+            "eahub.eu" to "eahub.eu (Europe)",
+            "localhost" to "This device (host mode)",
+        ),
+        defaultOption = "socom.cc",
+        coreVariable = "ppsspp_change_pro_ad_hoc_server_address",
+    )
+
+    val HOST_ON_LAN = SettingDef.Toggle(
+        key = "psp.net.host_lan",
+        title = "Host on this device",
+        description = "Runs the meeting server here for same-Wi-Fi play. Set the server to " +
+            "\"This device\" here, and to this device's Wi-Fi address on the other device. " +
+            "Guest/hotel Wi-Fi may block device-to-device traffic — a phone hotspot works.",
+        category = Category.MULTIPLAYER,
+        defaultValue = false,
+        coreVariable = "ppsspp_enable_builtin_pro_ad_hoc_server",
+    )
+
+    val UPNP = SettingDef.Toggle(
+        key = "psp.net.upnp",
+        title = "Automatic port setup (UPnP)",
+        description = "Asks your router to forward the ports internet play needs. " +
+            "Some networks (mobile data, carrier NAT) block this — same-Wi-Fi play doesn't need it.",
+        category = Category.MULTIPLAYER,
+        defaultValue = false,
+        coreVariable = "ppsspp_enable_upnp",
+    )
+
     val ALL: List<SettingDef> = listOf(
         INTERNAL_RESOLUTION, FRAMESKIP, TEXTURE_FILTERING, TEXTURE_SCALING, ANISOTROPIC,
         DISPLAY_ROTATION, DISPLAY_SCALE_MODE, DISPLAY_SHADER,
         DISPLAY_SCANLINE_INTENSITY, DISPLAY_SHARPEN_AMOUNT,
         CPU_CORE, FAST_MEMORY, IGNORE_BAD_MEMORY,
         GRAPHICS_BACKEND, WIFI_ONLY_DOWNLOADS, REWIND_ENABLED, HAPTICS,
+        ENABLE_WLAN, ADHOC_SERVER, HOST_ON_LAN, UPNP,
     )
 
     fun byKey(key: String): SettingDef? =

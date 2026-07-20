@@ -157,6 +157,13 @@ object LibretroBridge {
     external fun nativeSetCoreVariable(key: String, value: String)
     external fun nativeGetCoreVariable(key: String): String?
 
+    /**
+     * Player nickname served to the core via RETRO_ENVIRONMENT_GET_USERNAME (PPSSPP shows it to
+     * other adhoc players). Set BEFORE session start — the core reads it once at load.
+     */
+    external fun nativeSetUsername(name: String)
+    external fun nativeGetUsername(): String
+
     /** True while a variable change is still waiting for the core to re-query. */
     external fun nativeVariablesDirty(): Boolean
 

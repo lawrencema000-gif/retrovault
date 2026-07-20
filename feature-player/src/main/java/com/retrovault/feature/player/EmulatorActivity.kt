@@ -148,6 +148,33 @@ class EmulatorActivity : ComponentActivity() {
             }
         }
 
+        // Adhoc multiplayer identity (NETPLAY.md v1): nickname via GET_USERNAME (the core reads
+        // it once at load) and the persistent MAC as the 12 hex-digit core options — all-zero
+        // digits make the core re-randomize its MAC every session, which breaks game-side
+        // friend pairing. Pushed for PSP regardless of the WLAN toggle (identity is inert with
+        // networking off, and the vars must precede load).
+        if (system == GameSystem.PSP && LibretroBridge.available) {
+            // Nickname rides the launch intent: it's read from AppPrefs in the LAUNCHING (main)
+            // process where edits are fresh — this (:emu) process caches AppPrefs from its first
+            // init and never sees later edits. Pushed unconditionally: an empty value must CLEAR
+            // a previously pushed name (g_username is process-global and survives sessions).
+            val nickname = intent.getStringExtra(EXTRA_NICKNAME)
+                ?: com.retrovault.core.ui.AppPrefs.nickname
+            LibretroBridge.nativeSetUsername(nickname)
+            // Key names built locale-independently: String.format("%02d") localizes digits
+            // (Arabic-Indic etc.) and a mismatched key silently no-ops the whole MAC mechanism.
+            com.retrovault.settings.AdhocMac.digits(applicationContext)
+                .forEachIndexed { i, digit ->
+                    LibretroBridge.nativeSetCoreVariable(
+                        "ppsspp_change_mac_address" + (i + 1).toString().padStart(2, '0'),
+                        digit.toString(),
+                    )
+                }
+            if (settings.resolve(com.retrovault.settings.PspSettings.ENABLE_WLAN, gameKeyForSettings).asBoolean) {
+                playerToast = "Multiplayer beta: pausing, fast-forward, or rewind drops connections"
+            }
+        }
+
         if (coreOverride != null) {
             session.start(this, coreOverride, gamePath)
         } else {
@@ -499,6 +526,12 @@ class EmulatorActivity : ComponentActivity() {
         /** Restore the auto-save slot once the game boots ("Continue" library action). */
         const val EXTRA_RESUME = "resumeAuto"
 
+        /**
+         * Adhoc nickname, captured in the LAUNCHING process (fresh AppPrefs) — the :emu
+         * process's own AppPrefs snapshot goes stale once the process is cached.
+         */
+        const val EXTRA_NICKNAME = "adhocNickname"
+
         private const val QUICK_SLOT = 1
 
         /** Intent for a different-game relaunch via recreate() — see onNewIntent. */
@@ -518,6 +551,7 @@ class EmulatorActivity : ComponentActivity() {
                 putExtra(EXTRA_SYSTEM, system.name)
                 putExtra(EXTRA_GAME_PATH, gamePath)
                 putExtra(EXTRA_RESUME, resume)
+                putExtra(EXTRA_NICKNAME, com.retrovault.core.ui.AppPrefs.nickname)
             }
     }
 }
